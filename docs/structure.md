@@ -22,56 +22,58 @@ hello-pulse/
 ## Backend Structure
 
 ```
-backend/
-├── cmd/                       # Service entry points
-│   ├── api-gateway/
-│   ├── auth-service/
-│   ├── user-service/
-│   ├── project-service/
-│   ├── file-service/
-│   ├── collaboration-service/
-│   └── ai-orchestrator/
-├── internal/                  # Service-specific implementations
-│   ├── domain/                # Core domain models and interfaces
-│   │   ├── user/
-│   │   ├── project/
-│   │   ├── file/
-│   │   ├── collaboration/
-│   │   ├── auth/
-│   │   └── ai/
-│   ├── services/              # Business logic implementations
-│   │   ├── auth/
-│   │   ├── user/
-│   │   ├── project/
-│   │   ├── file/
-│   │   ├── collaboration/
-│   │   └── ai/
-│   ├── api/                   # API handlers and middleware
-│   │   ├── handlers/
-│   │   ├── middleware/
-│   │   ├── validation/
-│   │   └── routes/
-│   ├── gateway/               # API Gateway specific code
-│   │   ├── proxy/
-│   │   └── middleware/
-│   └── infrastructure/        # Technical components
-│       ├── config/
-│       ├── database/
-│       ├── storage/
-│       ├── messaging/
-│       └── monitoring/
-├── pkg/                       # Shared utilities
-│   ├── httputils/
-│   ├── jwt/
-│   ├── logger/
-│   ├── vectordb/
-│   ├── cache/
-│   └── errors/
-└── test/                      # Testing framework
-    ├── unit/
-    ├── integration/
-    ├── benchmark/
-    └── e2e/
+Hello-Pulse/
+├── backend/
+│   ├── cmd/                       # Service entry points
+│   │   ├── api-gateway/
+│   │   ├── auth-service/
+│   │   ├── user-service/
+│   │   ├── project-service/
+│   │   ├── file-service/
+│   │   ├── collaboration-service/
+│   │   └── ai-orchestrator/
+│   ├── internal/
+│   │   ├── models/                # All data models grouped by domain
+│   │   │   ├── user/              # User-related models
+│   │   │   ├── organization/      # Organization-related models
+│   │   │   ├── project/           # Project-related models
+│   │   │   ├── file/              # File-related models 
+│   │   │   ├── auth/              # Authentication-related models
+│   │   │   └── ai/                # AI-related models
+│   │   ├── repositories/          # Database access code
+│   │   │   ├── user/
+│   │   │   ├── organization/
+│   │   │   ├── project/
+│   │   │   ├── file/
+│   │   │   ├── auth/
+│   │   │   └── ai/
+│   │   ├── services/              # Business logic
+│   │   │   ├── user/
+│   │   │   ├── auth/
+│   │   │   ├── project/
+│   │   │   ├── file/
+│   │   │   ├── collaboration/
+│   │   │   └── ai/
+│   │   ├── api/                   # API layer
+│   │   │   ├── handlers/
+│   │   │   ├── middleware/
+│   │   │   ├── routes/
+│   │   │   └── validation/
+│   │   ├── gateway/               # API Gateway specific code
+│   │   │   ├── proxy/
+│   │   │   └── middleware/
+│   │   └── config/                # Configuration
+│   ├── pkg/                       # Shared utilities
+│   │   ├── database/              # Database connection
+│   │   ├── storage/               # File storage utilities
+│   │   ├── jwt/                   # JWT utilities
+│   │   └── logger/                # Logging utilities
+│   └── test/                      # Testing framework
+├── ai-services/                   # Python AI services
+├── clients/                       # Frontend clients
+├── infrastructure/                # Infrastructure configuration
+├── docs/                          # Documentation
+└── scripts/                       # Utility scripts
 ```
 
 ## AI Services Structure
