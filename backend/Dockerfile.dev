@@ -2,13 +2,18 @@ FROM golang:1.24
 
 WORKDIR /app
 
+# Install CompileDaemon for hot reloading
+RUN go install github.com/githubnemo/CompileDaemon@latest
+
+# Copy go.mod and go.sum
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Copy the rest of the application
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o backend
+# Expose the application port
+EXPOSE 8000
 
-EXPOSE 8080
-
-CMD ["/app/backend"]
+# Use CompileDaemon to watch for changes and rebuild
+CMD CompileDaemon --build="go build -o backend ./cmd/api/main.go" --command="./backend"
