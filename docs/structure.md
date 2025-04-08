@@ -116,6 +116,11 @@ ai-services/
 │   ├── models/
 │   ├── routers/
 │   └── schemas/
+├── training/
+│   ├── pipelines/
+│   ├── datasets/
+│   ├── experiments/
+│   └── evaluation/
 ├── tests/                     # AI-specific testing
 │   ├── unit/
 │   ├── integration/
