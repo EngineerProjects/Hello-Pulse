@@ -13,4 +13,4 @@ COPY . .
 EXPOSE 8000
 
 # Build and run the application
-CMD go build -o backend ./cmd/api/main.go && ./backend
+CMD ["sh", "-c", "go build -o backend ./cmd/api/main.go && ./backend"]
