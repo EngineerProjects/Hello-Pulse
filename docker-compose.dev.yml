@@ -18,22 +18,6 @@ services:
     networks:
       - app_network
 
-  pgadmin:
-    image: dpage/pgadmin4
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@hellopulse.fr}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "8888:80"
-    volumes:
-      - ./volumes/pgadmin-data:/var/lib/pgadmin
-    networks:
-      - app_network
-    depends_on:
-      - db
-
   minio:
     image: 'minio/minio:latest'
     restart: always
