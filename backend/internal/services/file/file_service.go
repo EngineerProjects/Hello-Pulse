@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"time"
 
@@ -15,17 +16,17 @@ import (
 
 // Service handles file operations
 type Service struct {
-	fileRepo    *fileRepo.Repository
-	minioClient *storage.MinioClient
-	bucketName  string
+	fileRepository   *fileRepo.Repository
+	storageProvider  storage.Provider
+	defaultBucket    string
 }
 
 // NewService creates a new file service
-func NewService(repo *fileRepo.Repository, minioClient *storage.MinioClient, bucketName string) *Service {
+func NewService(repo *fileRepo.Repository, storageProvider storage.Provider, defaultBucket string) *Service {
 	return &Service{
-		fileRepo:    repo,
-		minioClient: minioClient,
-		bucketName:  bucketName,
+		fileRepository:   repo,
+		storageProvider:  storageProvider,
+		defaultBucket:    defaultBucket,
 	}
 }
 
@@ -44,11 +45,11 @@ func (s *Service) UploadFile(
 	}
 	defer f.Close()
 
-	// Determine the folder based on file type
-	folder := storage.GetFolderForFileType(fileHeader.Filename)
+	// Determine the file category
+	category := storage.GetFileCategory(fileHeader.Filename)
 
-	// Generate a unique object name
-	objectName := storage.GenerateObjectName(organizationID, folder, fileHeader.Filename)
+	// Generate a storage path
+	objectName := storage.GenerateObjectName(organizationID, category, fileHeader.Filename)
 
 	// Get content type
 	contentType := fileHeader.Header.Get("Content-Type")
@@ -56,22 +57,24 @@ func (s *Service) UploadFile(
 		contentType = "application/octet-stream"
 	}
 
-	// Upload file to MinIO
-	if _, err := s.minioClient.UploadFile(
+	// Upload file to storage provider
+	_, err = s.storageProvider.UploadFile(
 		ctx,
-		s.bucketName,
+		s.defaultBucket,
 		objectName,
 		f,
 		fileHeader.Size,
 		contentType,
-	); err != nil {
+	)
+	if err != nil {
 		return nil, fmt.Errorf("failed to upload file to storage: %w", err)
 	}
 
 	// Create database record
 	fileRecord := &file.File{
+		ID:             uuid.New(),
 		FileName:       fileHeader.Filename,
-		BucketName:     s.bucketName,
+		BucketName:     s.defaultBucket,
 		ObjectName:     objectName,
 		ContentType:    contentType,
 		Size:           fileHeader.Size,
@@ -81,9 +84,9 @@ func (s *Service) UploadFile(
 		IsPublic:       isPublic,
 	}
 
-	if err := s.fileRepo.Create(fileRecord); err != nil {
+	if err := s.fileRepository.Create(fileRecord); err != nil {
 		// Try to delete the file from storage if database record creation fails
-		_ = s.minioClient.DeleteFile(ctx, s.bucketName, objectName)
+		_ = s.storageProvider.DeleteFile(ctx, s.defaultBucket, objectName)
 		return nil, fmt.Errorf("failed to save file record: %w", err)
 	}
 
@@ -93,7 +96,7 @@ func (s *Service) UploadFile(
 // GetFileURL generates a presigned URL for a file
 func (s *Service) GetFileURL(ctx context.Context, fileID uuid.UUID, userID uuid.UUID) (string, error) {
 	// Get file record
-	fileRecord, err := s.fileRepo.FindByID(fileID)
+	fileRecord, err := s.fileRepository.FindByID(fileID)
 	if err != nil {
 		return "", fmt.Errorf("file not found: %w", err)
 	}
@@ -109,7 +112,7 @@ func (s *Service) GetFileURL(ctx context.Context, fileID uuid.UUID, userID uuid.
 	}
 
 	// Generate presigned URL with 1 hour expiration
-	url, err := s.minioClient.GetFileURL(
+	url, err := s.storageProvider.GetFileURL(
 		ctx,
 		fileRecord.BucketName,
 		fileRecord.ObjectName,
@@ -125,7 +128,7 @@ func (s *Service) GetFileURL(ctx context.Context, fileID uuid.UUID, userID uuid.
 // SoftDeleteFile marks a file as deleted
 func (s *Service) SoftDeleteFile(ctx context.Context, fileID uuid.UUID, userID uuid.UUID) error {
 	// Get file record
-	fileRecord, err := s.fileRepo.FindByID(fileID)
+	fileRecord, err := s.fileRepository.FindByID(fileID)
 	if err != nil {
 		return fmt.Errorf("file not found: %w", err)
 	}
@@ -141,7 +144,7 @@ func (s *Service) SoftDeleteFile(ctx context.Context, fileID uuid.UUID, userID u
 	}
 
 	// Soft delete the file
-	if err := s.fileRepo.SoftDelete(fileID); err != nil {
+	if err := s.fileRepository.SoftDelete(fileID); err != nil {
 		return fmt.Errorf("failed to mark file as deleted: %w", err)
 	}
 
@@ -151,7 +154,7 @@ func (s *Service) SoftDeleteFile(ctx context.Context, fileID uuid.UUID, userID u
 // RestoreFile restores a soft-deleted file
 func (s *Service) RestoreFile(ctx context.Context, fileID uuid.UUID, userID uuid.UUID) error {
 	// Get file record
-	fileRecord, err := s.fileRepo.FindByID(fileID)
+	fileRecord, err := s.fileRepository.FindByID(fileID)
 	if err != nil {
 		return fmt.Errorf("file not found: %w", err)
 	}
@@ -167,7 +170,7 @@ func (s *Service) RestoreFile(ctx context.Context, fileID uuid.UUID, userID uuid
 	}
 
 	// Restore the file
-	if err := s.fileRepo.Restore(fileID); err != nil {
+	if err := s.fileRepository.Restore(fileID); err != nil {
 		return fmt.Errorf("failed to restore file: %w", err)
 	}
 
@@ -177,18 +180,18 @@ func (s *Service) RestoreFile(ctx context.Context, fileID uuid.UUID, userID uuid
 // DeleteFilePermanently permanently deletes a file
 func (s *Service) DeleteFilePermanently(ctx context.Context, fileID uuid.UUID) error {
 	// Get file record
-	fileRecord, err := s.fileRepo.FindByID(fileID)
+	fileRecord, err := s.fileRepository.FindByID(fileID)
 	if err != nil {
 		return fmt.Errorf("file not found: %w", err)
 	}
 
 	// Delete the file from storage
-	if err := s.minioClient.DeleteFile(ctx, fileRecord.BucketName, fileRecord.ObjectName); err != nil {
+	if err := s.storageProvider.DeleteFile(ctx, fileRecord.BucketName, fileRecord.ObjectName); err != nil {
 		return fmt.Errorf("failed to delete file from storage: %w", err)
 	}
 
 	// Delete the file record from database
-	if err := s.fileRepo.DeletePermanently(fileID); err != nil {
+	if err := s.fileRepository.DeletePermanently(fileID); err != nil {
 		return fmt.Errorf("failed to delete file record: %w", err)
 	}
 
@@ -197,23 +200,23 @@ func (s *Service) DeleteFilePermanently(ctx context.Context, fileID uuid.UUID) e
 
 // GetUserFiles gets all files uploaded by a user
 func (s *Service) GetUserFiles(userID uuid.UUID, includeDeleted bool) ([]file.File, error) {
-	return s.fileRepo.FindByUploader(userID, includeDeleted)
+	return s.fileRepository.FindByUploader(userID, includeDeleted)
 }
 
 // GetOrganizationFiles gets all files for an organization
 func (s *Service) GetOrganizationFiles(orgID uuid.UUID, includeDeleted bool) ([]file.File, error) {
-	return s.fileRepo.FindByOrganization(orgID, includeDeleted)
+	return s.fileRepository.FindByOrganization(orgID, includeDeleted)
 }
 
 // GetFile gets a file by ID
 func (s *Service) GetFile(fileID uuid.UUID) (*file.File, error) {
-	return s.fileRepo.FindByID(fileID)
+	return s.fileRepository.FindByID(fileID)
 }
 
 // UpdateFileVisibility updates a file's public/private status
 func (s *Service) UpdateFileVisibility(ctx context.Context, fileID uuid.UUID, userID uuid.UUID, isPublic bool) error {
 	// Get file record
-	fileRecord, err := s.fileRepo.FindByID(fileID)
+	fileRecord, err := s.fileRepository.FindByID(fileID)
 	if err != nil {
 		return fmt.Errorf("file not found: %w", err)
 	}
@@ -225,8 +228,10 @@ func (s *Service) UpdateFileVisibility(ctx context.Context, fileID uuid.UUID, us
 
 	// Update the file visibility
 	fileRecord.IsPublic = isPublic
-	if err := s.fileRepo.Update(fileRecord); err != nil {
-		return fmt.Errorf("failed to update file visibility: %w", err)
+
+	// Update the file record
+	if err := s.fileRepository.Update(fileRecord); err != nil {
+		return fmt.Errorf("failed to update file record: %w", err)
 	}
 
 	return nil
@@ -235,23 +240,29 @@ func (s *Service) UpdateFileVisibility(ctx context.Context, fileID uuid.UUID, us
 // CleanupExpiredFiles permanently deletes files that were soft-deleted before a threshold
 func (s *Service) CleanupExpiredFiles(ctx context.Context, threshold time.Time) error {
 	// Find files to delete
-	files, err := s.fileRepo.FindExpiredDeleted(threshold)
+	filesToDelete, err := s.fileRepository.FindExpiredDeleted(threshold)
 	if err != nil {
 		return fmt.Errorf("failed to find expired files: %w", err)
 	}
 
+	var errors []string
+
 	// Delete each file
-	for _, f := range files {
+	for _, fileRecord := range filesToDelete {
 		// Delete from storage
-		if err := s.minioClient.DeleteFile(ctx, f.BucketName, f.ObjectName); err != nil {
-			fmt.Printf("Warning: failed to delete file %s from storage: %v\n", f.ObjectName, err)
+		if err := s.storageProvider.DeleteFile(ctx, fileRecord.BucketName, fileRecord.ObjectName); err != nil {
+			errors = append(errors, fmt.Sprintf("failed to delete file %s from storage: %v", fileRecord.ObjectName, err))
 			continue
 		}
 
 		// Delete from database
-		if err := s.fileRepo.DeletePermanently(f.ID); err != nil {
-			fmt.Printf("Warning: failed to delete file %s from database: %v\n", f.ID, err)
+		if err := s.fileRepository.DeletePermanently(fileRecord.ID); err != nil {
+			errors = append(errors, fmt.Sprintf("failed to delete file %s from database: %v", fileRecord.ID, err))
 		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("errors during cleanup: %s", errors)
 	}
 
 	return nil
@@ -259,10 +270,36 @@ func (s *Service) CleanupExpiredFiles(ctx context.Context, threshold time.Time) 
 
 // GetSupportedFileTypes returns a map of supported file types
 func (s *Service) GetSupportedFileTypes() map[string][]string {
-	return file.GetSupportedFileTypes()
+	return storage.GetSupportedFileTypes()
 }
 
-// GetUserAccessibleFiles returns files that a user can access (owned or public within their org)
-func (s *Service) GetUserAccessibleFiles(userID, orgID uuid.UUID) ([]file.File, error) {
-	return s.fileRepo.GetUserAccessibleFiles(userID, orgID)
+// DownloadFile downloads a file from storage
+func (s *Service) DownloadFile(ctx context.Context, fileID uuid.UUID, userID uuid.UUID) (io.ReadCloser, string, error) {
+	// Get file record
+	fileRecord, err := s.fileRepository.FindByID(fileID)
+	if err != nil {
+		return nil, "", fmt.Errorf("file not found: %w", err)
+	}
+
+	// Check if user has access to the file
+	if fileRecord.UploaderID != userID && !fileRecord.IsPublic {
+		return nil, "", errors.New("access denied: you don't have permission to access this file")
+	}
+
+	// Check if file is deleted
+	if fileRecord.IsDeleted {
+		return nil, "", errors.New("file is deleted")
+	}
+
+	// Download file from storage
+	reader, err := s.storageProvider.DownloadFile(
+		ctx,
+		fileRecord.BucketName,
+		fileRecord.ObjectName,
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to download file: %w", err)
+	}
+
+	return reader, fileRecord.ContentType, nil
 }
