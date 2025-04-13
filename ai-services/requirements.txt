@@ -1,0 +1,27 @@
+# Core web server
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Authentication
+pyjwt
+
+# Network and async utilities
+aiohttp
+httpx
+
+# LLM providers
+openai
+tiktoken
+
+# Vector databases
+chromadb
+qdrant-client
+
+# Utilities
+numpy
+python-multipart
+
+# Logging
+python-json-logger
