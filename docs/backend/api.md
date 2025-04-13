@@ -1,21 +1,70 @@
-# Hello Pulse Backend API Documentation
+# Hello Pulse API Documentation
 
-This document provides a comprehensive overview of the Hello Pulse backend API, data models, and architecture to guide frontend development, including practical usage examples with curl.
+This document provides comprehensive documentation for all APIs in the Hello Pulse platform. It includes details on authentication, endpoints, request/response formats, and practical examples using cURL.
 
-## API Structure and Endpoints with Usage Examples
+## Table of Contents
 
-### Authentication Endpoints
+1. [Authentication](#authentication)
+2. [User Management](#user-management)
+3. [Organization Management](#organization-management)
+4. [Project Management](#project-management)
+5. [Project Summaries](#project-summaries)
+6. [Event Management](#event-management)
+7. [File Management](#file-management)
 
-| Method | Endpoint | Description | Authentication Required |
-|--------|----------|-------------|------------------------|
-| POST | `/register` | Register a new user | No |
-| POST | `/login` | Authenticate user and get session token | No |
-| POST | `/logout` | Invalidate current session | No |
-| GET | `/me` | Get current authenticated user details | Yes |
+---
 
-#### Authentication API Usage Examples
+## Authentication
 
-**Register a new user:**
+All protected endpoints require a valid JWT token which is sent as a cookie. Authentication is handled through the following endpoints.
+
+### Register a New User
+
+Creates a new user account and returns a session token.
+
+- **URL**: `/register`
+- **Method**: `POST`
+- **Auth Required**: No
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "first_name": "John",
+  "last_name": "Doe",
+  "phone": "+33612345678",
+  "address": "123 Main St, Paris, France",
+  "password": "securePassword123"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "User registered successfully",
+  "user": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    "email": "user@example.com",
+    "firstName": "John",
+    "lastName": "Doe"
+  }
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Email already exists"
+}
+```
+
+**Example:**
 ```bash
 curl -X POST http://localhost:5000/register \
   -H "Content-Type: application/json" \
@@ -23,86 +72,75 @@ curl -X POST http://localhost:5000/register \
     "email": "user@example.com",
     "first_name": "John",
     "last_name": "Doe",
-    "phone": "5551234567",
-    "address": "123 Main St",
-    "password": "securepassword"
+    "phone": "+33612345678",
+    "address": "123 Main St, Paris, France",
+    "password": "securePassword123"
   }'
 ```
 
-**Register Response:**
+### Login
+
+Authenticates a user and returns a session token.
+
+- **URL**: `/login`
+- **Method**: `POST`
+- **Auth Required**: No
+
+**Request Body:**
 ```json
 {
-  "success": true,
-  "message": "User registered successfully",
-  "user": {
-    "id": "user-uuid",
-    "email": "user@example.com",
-    "firstName": "John",
-    "lastName": "Doe"
-  }
+  "email": "user@example.com",
+  "password": "securePassword123"
 }
 ```
 
-**Login with email and password:**
-```bash
-curl -X POST http://localhost:5000/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "securepassword"
-  }' \
-  -c cookies.txt
-```
-
-**Login Response:**
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "message": "Login successful",
   "user": {
-    "id": "user-uuid",
+    "id": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
     "email": "user@example.com",
     "firstName": "John",
     "lastName": "Doe"
   }
 }
 ```
-> Note: The JWT token is stored in an HTTP-only cookie, which curl saves to the cookies.txt file.
 
-**Get current user details:**
-```bash
-curl -X GET http://localhost:5000/me \
-  -b cookies.txt
-```
-
-**Me Response:**
+**Error Response:**
+- **Code**: 401 Unauthorized
+- **Content**:
 ```json
 {
-  "success": true,
-  "user": {
-    "id": "user-uuid",
-    "email": "user@example.com",
-    "firstName": "John",
-    "lastName": "Doe",
-    "phone": "5551234567",
-    "address": "123 Main St",
-    "role": "User",
-    "organization": {
-      "id": "org-uuid",
-      "name": "My Organization"
-    },
-    "createdAt": "2023-01-01T00:00:00Z"
-  }
+  "success": false,
+  "error": "Invalid credentials"
 }
 ```
 
-**Logout (invalidate session):**
+**Example:**
 ```bash
-curl -X POST http://localhost:5000/logout \
-  -b cookies.txt
+curl -X POST http://localhost:5000/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "securePassword123"
+  }'
 ```
 
-**Logout Response:**
+### Logout
+
+Invalidates the current session token.
+
+- **URL**: `/logout`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -110,51 +148,133 @@ curl -X POST http://localhost:5000/logout \
 }
 ```
 
-### Organization Endpoints
-
-| Method | Endpoint | Description | Authentication Required |
-|--------|----------|-------------|------------------------|
-| POST | `/organizations` | Create a new organization | Yes |
-| POST | `/organizations/join` | Join an organization using invite code | Yes |
-| GET | `/organizations/invite-codes` | Get invite codes for user's organization | Yes |
-| POST | `/organizations/invite-codes` | Create a new invite code | Yes |
-| DELETE | `/organizations/invite-codes` | Delete an invite code | Yes |
-
-#### Organization API Usage Examples
-
-**Create a new organization:**
+**Example:**
 ```bash
-curl -X POST http://localhost:5000/organizations \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "name": "My Organization"
-  }'
+curl -X POST http://localhost:5000/logout \
+  -b "token=your-session-token"
 ```
 
-**Create Organization Response:**
+---
+
+## User Management
+
+### Get Current User
+
+Retrieves information about the currently authenticated user.
+
+- **URL**: `/me`
+- **Method**: `GET`
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "user": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    "email": "user@example.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "phone": "+33612345678",
+    "address": "123 Main St, Paris, France",
+    "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab",
+    "role": "Admin",
+    "lastActive": "2023-09-15T14:30:45Z",
+    "createdAt": "2023-01-15T10:20:30Z",
+    "updatedAt": "2023-09-15T14:30:45Z"
+  }
+}
+```
+
+**Error Response:**
+- **Code**: 401 Unauthorized
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Unauthorized"
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://localhost:5000/me \
+  -b "token=your-session-token"
+```
+
+---
+
+## Organization Management
+
+### Create Organization
+
+Creates a new organization and assigns the current user as its owner.
+
+- **URL**: `/organizations`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "name": "Acme Corp"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "message": "Organization created successfully",
   "organization": {
-    "id": "org-uuid",
-    "name": "My Organization"
+    "id": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab",
+    "name": "Acme Corp"
   }
 }
 ```
 
-**Join an organization using invite code:**
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "User already belongs to an organization"
+}
+```
+
+**Example:**
 ```bash
-curl -X POST http://localhost:5000/organizations/join \
+curl -X POST http://localhost:5000/organizations \
+  -b "token=your-session-token" \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
   -d '{
-    "code": "ABC123"
+    "name": "Acme Corp"
   }'
 ```
 
-**Join Organization Response:**
+### Join Organization
+
+Adds the current user to an organization using an invite code.
+
+- **URL**: `/organizations/join`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "code": "ABCDEF"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -162,60 +282,134 @@ curl -X POST http://localhost:5000/organizations/join \
 }
 ```
 
-**List invite codes for organization:**
-```bash
-curl -X GET http://localhost:5000/organizations/invite-codes \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Invalid invite code"
+}
 ```
 
-**List Invite Codes Response:**
+**Example:**
+```bash
+curl -X POST http://localhost:5000/organizations/join \
+  -b "token=your-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "ABCDEF"
+  }'
+```
+
+### Create Invite Code
+
+Creates a new invite code for an organization.
+
+- **URL**: `/organizations/invite-codes`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "expirationTimeMs": 86400000
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "code": "ABCDEF"
+}
+```
+
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only administrators can create invite codes"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:5000/organizations/invite-codes \
+  -b "token=your-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expirationTimeMs": 86400000
+  }'
+```
+
+### Get Invite Codes
+
+Retrieves all invite codes for the current user's organization.
+
+- **URL**: `/organizations/invite-codes`
+- **Method**: `GET`
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "codes": [
     {
-      "id": "invite-uuid-1",
-      "code": "ABC123",
-      "expirationTimeMs": 1672531200000
+      "id": "i1j2k3l4-m5n6-7890-opqr-1234567890ab",
+      "code": "ABCDEF",
+      "expirationTimeMs": 1684857600000
     },
     {
-      "id": "invite-uuid-2",
-      "code": "XYZ789",
-      "expirationTimeMs": 1672617600000
+      "id": "s1t2u3v4-w5x6-7890-yzab-1234567890ab",
+      "code": "GHIJKL",
+      "expirationTimeMs": 1684944000000
     }
   ]
 }
 ```
 
-**Create a new invite code:**
-```bash
-curl -X POST http://localhost:5000/organizations/invite-codes \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "expirationTimeMs": 1672531200000
-  }'
-```
-
-**Create Invite Code Response:**
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
 ```json
 {
-  "success": true,
-  "code": "ABC123"
+  "success": false,
+  "error": "Only administrators can view invite codes"
 }
 ```
 
-**Delete an invite code:**
+**Example:**
 ```bash
-curl -X DELETE http://localhost:5000/organizations/invite-codes \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "id": "invite-uuid-1"
-  }'
+curl -X GET http://localhost:5000/organizations/invite-codes \
+  -b "token=your-session-token"
 ```
 
-**Delete Invite Code Response:**
+### Delete Invite Code
+
+Deletes an invite code.
+
+- **URL**: `/organizations/invite-codes`
+- **Method**: `DELETE`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "id": "i1j2k3l4-m5n6-7890-opqr-1234567890ab"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -223,167 +417,234 @@ curl -X DELETE http://localhost:5000/organizations/invite-codes \
 }
 ```
 
-### Project Endpoints
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only administrators can delete invite codes"
+}
+```
 
-| Method | Endpoint | Description | Authentication Required |
-|--------|----------|-------------|------------------------|
-| POST | `/projects` | Create a new project | Yes |
-| GET | `/projects` | Get all (root) projects for user's organization | Yes |
-| GET | `/projects/:id` | Get project details by ID | Yes |
-| PUT | `/projects/:id` | Update project details | Yes |
-| DELETE | `/projects/:id` | Delete a project | Yes |
-| POST | `/projects/add-user` | Add a user to a project | Yes |
-
-#### Project API Usage Examples
-
-**Create a new project:**
+**Example:**
 ```bash
-curl -X POST http://localhost:5000/projects \
+curl -X DELETE http://localhost:5000/organizations/invite-codes \
+  -b "token=your-session-token" \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
   -d '{
-    "projectName": "New Project",
-    "projectDesc": "Project description",
-    "parentProjectId": null
+    "id": "i1j2k3l4-m5n6-7890-opqr-1234567890ab"
   }'
 ```
 
-**Create Project Response:**
+---
+
+## Project Management
+
+### Create Project
+
+Creates a new project.
+
+- **URL**: `/projects`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "projectName": "New Website",
+  "projectDesc": "Company website redesign",
+  "parentProjectId": null
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "message": "Project created successfully",
   "project": {
-    "id": "project-uuid",
-    "projectName": "New Project",
-    "projectDesc": "Project description",
-    "ownerId": "user-uuid",
-    "organizationId": "org-uuid",
+    "id": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+    "name": "New Website",
+    "description": "Company website redesign",
+    "ownerId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab",
     "parentProjectId": null,
-    "createdAt": "2023-01-01T00:00:00Z",
-    "updatedAt": "2023-01-01T00:00:00Z"
+    "createdAt": "2023-09-15T15:30:45Z",
+    "updatedAt": "2023-09-15T15:30:45Z"
   }
 }
 ```
 
-**Create a sub-project:**
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "User does not belong to an organization"
+}
+```
+
+**Example:**
 ```bash
 curl -X POST http://localhost:5000/projects \
+  -b "token=your-session-token" \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
   -d '{
-    "projectName": "Sub Project",
-    "projectDesc": "A child project",
-    "parentProjectId": "parent-project-uuid"
+    "projectName": "New Website",
+    "projectDesc": "Company website redesign",
+    "parentProjectId": null
   }'
 ```
 
-**Get all root projects:**
-```bash
-curl -X GET http://localhost:5000/projects \
-  -b cookies.txt
-```
+### Get All Projects
 
-**Get All Projects Response:**
+Retrieves all root projects for the current user's organization.
+
+- **URL**: `/projects`
+- **Method**: `GET`
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "projects": [
     {
-      "projectId": "project-uuid-1",
-      "projectName": "Project 1",
-      "projectDesc": "Description 1",
-      "ownerId": "user-uuid",
-      "organizationId": "org-uuid",
+      "id": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+      "name": "New Website",
+      "description": "Company website redesign",
+      "ownerId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab",
       "parentProjectId": null,
-      "createdAt": "2023-01-01T00:00:00Z",
-      "updatedAt": "2023-01-01T00:00:00Z",
-      "participants": [
-        {
-          "userId": "user-uuid",
-          "firstName": "John",
-          "lastName": "Doe",
-          "email": "john@example.com"
-        }
-      ]
+      "createdAt": "2023-09-15T15:30:45Z",
+      "updatedAt": "2023-09-15T15:30:45Z"
     },
     {
-      "projectId": "project-uuid-2",
-      "projectName": "Project 2",
-      "projectDesc": "Description 2",
-      "ownerId": "user-uuid",
-      "organizationId": "org-uuid",
+      "id": "w1x2y3z4-a5b6-7890-cdef-1234567890ab",
+      "name": "Mobile App",
+      "description": "Company mobile application",
+      "ownerId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab",
       "parentProjectId": null,
-      "createdAt": "2023-01-01T00:00:00Z",
-      "updatedAt": "2023-01-01T00:00:00Z",
-      "participants": [
-        {
-          "userId": "user-uuid",
-          "firstName": "John",
-          "lastName": "Doe",
-          "email": "john@example.com"
-        }
-      ]
+      "createdAt": "2023-09-10T11:20:35Z",
+      "updatedAt": "2023-09-14T09:15:25Z"
     }
   ]
 }
 ```
 
-**Get a specific project:**
-```bash
-curl -X GET http://localhost:5000/projects/project-uuid-1 \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "User does not belong to an organization"
+}
 ```
 
-**Get Project Response:**
+**Example:**
+```bash
+curl -X GET http://localhost:5000/projects \
+  -b "token=your-session-token"
+```
+
+### Get Project Details
+
+Retrieves detailed information about a specific project.
+
+- **URL**: `/projects/:id`
+- **Method**: `GET`
+- **URL Params**: `id=[uuid]` - Project ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "project": {
-    "projectId": "project-uuid-1",
-    "projectName": "Project Name",
-    "projectDesc": "Description",
-    "ownerId": "user-uuid",
-    "organizationId": "org-uuid",
+    "id": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+    "name": "New Website",
+    "description": "Company website redesign",
+    "ownerId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab",
     "parentProjectId": null,
-    "createdAt": "2023-01-01T00:00:00Z",
-    "updatedAt": "2023-01-01T00:00:00Z"
+    "createdAt": "2023-09-15T15:30:45Z",
+    "updatedAt": "2023-09-15T15:30:45Z"
   },
   "childProjects": [
     {
-      "projectId": "child-project-uuid",
-      "projectName": "Child Project",
-      "projectDesc": "Child Description",
-      "ownerId": "user-uuid",
-      "organizationId": "org-uuid",
-      "parentProjectId": "project-uuid-1",
-      "createdAt": "2023-01-01T00:00:00Z",
-      "updatedAt": "2023-01-01T00:00:00Z"
+      "id": "c1d2e3f4-g5h6-7890-ijkl-1234567890ab",
+      "name": "Frontend Development",
+      "description": "Website frontend development",
+      "ownerId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab",
+      "parentProjectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+      "createdAt": "2023-09-16T10:00:00Z",
+      "updatedAt": "2023-09-16T10:00:00Z"
     }
   ],
   "participants": [
     {
-      "userId": "user-uuid",
+      "id": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
       "firstName": "John",
       "lastName": "Doe",
-      "email": "john@example.com"
+      "email": "john.doe@example.com"
+    },
+    {
+      "id": "e1f2g3h4-i5j6-7890-klmn-1234567890ab",
+      "firstName": "Jane",
+      "lastName": "Smith",
+      "email": "jane.smith@example.com"
     }
   ]
 }
 ```
 
-**Update a project:**
-```bash
-curl -X PUT http://localhost:5000/projects/project-uuid-1 \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "projectName": "Updated Project Name",
-    "projectDesc": "Updated description"
-  }'
+**Error Response:**
+- **Code**: 404 Not Found
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Project not found"
+}
 ```
 
-**Update Project Response:**
+**Example:**
+```bash
+curl -X GET http://localhost:5000/projects/p1q2r3s4-t5u6-7890-vwxy-1234567890ab \
+  -b "token=your-session-token"
+```
+
+### Update Project
+
+Updates a project's details.
+
+- **URL**: `/projects/:id`
+- **Method**: `PUT`
+- **URL Params**: `id=[uuid]` - Project ID
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "projectName": "Updated Website",
+  "projectDesc": "Company website redesign with new branding"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -391,13 +652,39 @@ curl -X PUT http://localhost:5000/projects/project-uuid-1 \
 }
 ```
 
-**Delete a project:**
-```bash
-curl -X DELETE http://localhost:5000/projects/project-uuid-1 \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the project owner can update the project"
+}
 ```
 
-**Delete Project Response:**
+**Example:**
+```bash
+curl -X PUT http://localhost:5000/projects/p1q2r3s4-t5u6-7890-vwxy-1234567890ab \
+  -b "token=your-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectName": "Updated Website",
+    "projectDesc": "Company website redesign with new branding"
+  }'
+```
+
+### Delete Project
+
+Deletes a project and all its child projects.
+
+- **URL**: `/projects/:id`
+- **Method**: `DELETE`
+- **URL Params**: `id=[uuid]` - Project ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -405,18 +692,41 @@ curl -X DELETE http://localhost:5000/projects/project-uuid-1 \
 }
 ```
 
-**Add a user to a project:**
-```bash
-curl -X POST http://localhost:5000/projects/add-user \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "projectId": "project-uuid-1",
-    "userId": "another-user-uuid"
-  }'
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the project owner can delete the project"
+}
 ```
 
-**Add User Response:**
+**Example:**
+```bash
+curl -X DELETE http://localhost:5000/projects/p1q2r3s4-t5u6-7890-vwxy-1234567890ab \
+  -b "token=your-session-token"
+```
+
+### Add Project Participant
+
+Adds a user as a participant to a project.
+
+- **URL**: `/projects/add-user`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+  "userId": "e1f2g3h4-i5j6-7890-klmn-1234567890ab"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -424,116 +734,404 @@ curl -X POST http://localhost:5000/projects/add-user \
 }
 ```
 
-### Event Endpoints
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the project owner can add participants"
+}
+```
 
-| Method | Endpoint | Description | Authentication Required |
-|--------|----------|-------------|------------------------|
-| POST | `/events` | Create a new event | Yes |
-| GET | `/events` | Get all events for user | Yes |
-| DELETE | `/events/:id` | Delete an event | Yes |
-| POST | `/events/add-member` | Add a user to an event | Yes |
-| POST | `/events/remove-member` | Remove a user from an event | Yes |
-| POST | `/events/:id/update-title` | Update an event's title | Yes |
-| GET | `/events/:id/participants` | Get participants of an event | Yes |
-| GET | `/events/fetch-users` | Get users from the organization for event creation | Yes |
-
-#### Event API Usage Examples
-
-**Create a new event:**
+**Example:**
 ```bash
-curl -X POST http://localhost:5000/events \
+curl -X POST http://localhost:5000/projects/add-user \
+  -b "token=your-session-token" \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
   -d '{
-    "title": "Team Meeting",
-    "date": "2023-05-20",
-    "startTime": "14:00",
-    "endTime": "15:00",
-    "userIds": ["user-uuid-1", "user-uuid-2"],
-    "importance": "important"
+    "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+    "userId": "e1f2g3h4-i5j6-7890-klmn-1234567890ab"
   }'
 ```
 
-**Create Event Response:**
+---
+
+## Project Summaries
+
+### Create Summary
+
+Creates a new summary for a project.
+
+- **URL**: `/projects/summaries`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+  "title": "Initial Design Review",
+  "content": "The initial design review went well. Team decided on using a minimalist approach with the company's brand colors."
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "Summary created successfully",
+  "summary": {
+    "id": "s1t2u3v4-w5x6-7890-yzab-1234567890ab",
+    "title": "Initial Design Review",
+    "content": "The initial design review went well. Team decided on using a minimalist approach with the company's brand colors.",
+    "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+    "createdBy": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    "createdAt": "2023-09-17T14:00:00Z",
+    "updatedAt": "2023-09-17T14:00:00Z"
+  }
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Project not found"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:5000/projects/summaries \
+  -b "token=your-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+    "title": "Initial Design Review",
+    "content": "The initial design review went well. Team decided on using a minimalist approach with the company'\''s brand colors."
+  }'
+```
+
+### Get Project Summaries
+
+Retrieves all summaries for a specific project.
+
+- **URL**: `/projects/:id/summaries`
+- **Method**: `GET`
+- **URL Params**: `id=[uuid]` - Project ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "summaries": [
+    {
+      "id": "s1t2u3v4-w5x6-7890-yzab-1234567890ab",
+      "title": "Initial Design Review",
+      "content": "The initial design review went well. Team decided on using a minimalist approach with the company's brand colors.",
+      "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+      "createdBy": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "createdAt": "2023-09-17T14:00:00Z",
+      "updatedAt": "2023-09-17T14:00:00Z"
+    },
+    {
+      "id": "c1d2e3f4-g5h6-7890-ijkl-9876543210zy",
+      "title": "Development Progress",
+      "content": "Frontend development is 50% complete. Backend API endpoints have been defined.",
+      "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+      "createdBy": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "createdAt": "2023-09-20T11:30:00Z",
+      "updatedAt": "2023-09-20T11:30:00Z"
+    }
+  ]
+}
+```
+
+**Error Response:**
+- **Code**: 404 Not Found
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Project not found"
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://localhost:5000/projects/p1q2r3s4-t5u6-7890-vwxy-1234567890ab/summaries \
+  -b "token=your-session-token"
+```
+
+### Get Summary Details
+
+Retrieves details of a specific summary.
+
+- **URL**: `/projects/summaries/:id`
+- **Method**: `GET`
+- **URL Params**: `id=[uuid]` - Summary ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "summary": {
+    "id": "s1t2u3v4-w5x6-7890-yzab-1234567890ab",
+    "title": "Initial Design Review",
+    "content": "The initial design review went well. Team decided on using a minimalist approach with the company's brand colors.",
+    "projectId": "p1q2r3s4-t5u6-7890-vwxy-1234567890ab",
+    "createdBy": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    "createdAt": "2023-09-17T14:00:00Z",
+    "updatedAt": "2023-09-17T14:00:00Z"
+  }
+}
+```
+
+**Error Response:**
+- **Code**: 404 Not Found
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Summary not found"
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://localhost:5000/projects/summaries/s1t2u3v4-w5x6-7890-yzab-1234567890ab \
+  -b "token=your-session-token"
+```
+
+### Update Summary
+
+Updates a summary's content.
+
+- **URL**: `/projects/summaries/:id`
+- **Method**: `PUT`
+- **URL Params**: `id=[uuid]` - Summary ID
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "title": "Updated Design Review",
+  "content": "The design review went well. Team agreed on a minimalist approach with the company's updated brand colors and typography."
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "Summary updated successfully"
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the creator can update this summary"
+}
+```
+
+**Example:**
+```bash
+curl -X PUT http://localhost:5000/projects/summaries/s1t2u3v4-w5x6-7890-yzab-1234567890ab \
+  -b "token=your-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Updated Design Review",
+    "content": "The design review went well. Team agreed on a minimalist approach with the company'\''s updated brand colors and typography."
+  }'
+```
+
+### Delete Summary
+
+Deletes a summary.
+
+- **URL**: `/projects/summaries/:id`
+- **Method**: `DELETE`
+- **URL Params**: `id=[uuid]` - Summary ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "Summary deleted successfully"
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the creator can delete this summary"
+}
+```
+
+**Example:**
+```bash
+curl -X DELETE http://localhost:5000/projects/summaries/s1t2u3v4-w5x6-7890-yzab-1234567890ab \
+  -b "token=your-session-token"
+```
+
+---
+
+## Event Management
+
+### Create Event
+
+Creates a new event.
+
+- **URL**: `/events`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "title": "Project Kickoff Meeting",
+  "date": "2023-10-15",
+  "startTime": "09:00",
+  "endTime": "10:30",
+  "userIds": ["e1f2g3h4-i5j6-7890-klmn-1234567890ab"],
+  "importance": "high"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "message": "Event created successfully",
   "event": {
-    "id": "event-uuid",
-    "title": "Team Meeting",
-    "date": "2023-05-20",
-    "startTime": "14:00",
-    "endTime": "15:00",
-    "importance": "important"
+    "id": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+    "title": "Project Kickoff Meeting",
+    "date": "2023-10-15",
+    "startTime": "09:00",
+    "endTime": "10:30",
+    "importance": "high"
   }
 }
 ```
 
-**Get all events for a user:**
-```bash
-curl -X GET http://localhost:5000/events \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "User does not belong to an organization"
+}
 ```
 
-**Get Events Response:**
+**Example:**
+```bash
+curl -X POST http://localhost:5000/events \
+  -b "token=your-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Project Kickoff Meeting",
+    "date": "2023-10-15",
+    "startTime": "09:00",
+    "endTime": "10:30",
+    "userIds": ["e1f2g3h4-i5j6-7890-klmn-1234567890ab"],
+    "importance": "high"
+  }'
+```
+
+### Get Events
+
+Retrieves all events for the current user.
+
+- **URL**: `/events`
+- **Method**: `GET`
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "events": [
     {
-      "id": "event-uuid-1",
-      "title": "Team Meeting",
-      "date": "2023-05-20",
-      "startTime": "14:00",
-      "endTime": "15:00",
-      "importance": "important",
-      "createdById": "user-uuid",
-      "organizationId": "org-uuid",
-      "createdBy": {
-        "userId": "user-uuid",
-        "firstName": "John",
-        "lastName": "Doe",
-        "email": "john@example.com"
-      },
-      "users": [
-        {
-          "userId": "user-uuid-1",
-          "firstName": "Jane",
-          "lastName": "Smith",
-          "email": "jane@example.com"
-        }
-      ]
+      "id": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+      "title": "Project Kickoff Meeting",
+      "date": "2023-10-15",
+      "startTime": "09:00",
+      "endTime": "10:30",
+      "importance": "high",
+      "createdById": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab"
     },
     {
-      "id": "event-uuid-2",
-      "title": "Project Review",
-      "date": "2023-05-22",
-      "startTime": "10:00",
-      "endTime": "11:00",
-      "importance": "very important",
-      "createdById": "user-uuid",
-      "organizationId": "org-uuid",
-      "createdBy": {
-        "userId": "user-uuid",
-        "firstName": "John",
-        "lastName": "Doe",
-        "email": "john@example.com"
-      },
-      "users": []
+      "id": "f1g2h3i4-j5k6-7890-lmno-9876543210zy",
+      "title": "Weekly Review",
+      "date": "2023-10-20",
+      "startTime": "14:00",
+      "endTime": "15:00",
+      "importance": "medium",
+      "createdById": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "organizationId": "o1p2q3r4-s5t6-7890-uvwx-1234567890ab"
     }
   ],
-  "userId": "user-uuid"
+  "userId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab"
 }
 ```
 
-**Delete an event:**
-```bash
-curl -X DELETE http://localhost:5000/events/event-uuid-1 \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 401 Unauthorized
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Unauthorized"
+}
 ```
 
-**Delete Event Response:**
+**Example:**
+```bash
+curl -X GET http://localhost:5000/events \
+  -b "token=your-session-token"
+```
+
+### Delete Event
+
+Deletes an event.
+
+- **URL**: `/events/:id`
+- **Method**: `DELETE`
+- **URL Params**: `id=[uuid]` - Event ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -541,18 +1139,41 @@ curl -X DELETE http://localhost:5000/events/event-uuid-1 \
 }
 ```
 
-**Add a user to an event:**
-```bash
-curl -X POST http://localhost:5000/events/add-member \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "eventId": "event-uuid-1",
-    "userId": "user-uuid-2"
-  }'
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the event creator can delete the event"
+}
 ```
 
-**Add Member Response:**
+**Example:**
+```bash
+curl -X DELETE http://localhost:5000/events/e1v2w3x4-y5z6-7890-abcd-9876543210zy \
+  -b "token=your-session-token"
+```
+
+### Add Event Participant
+
+Adds a user to an event.
+
+- **URL**: `/events/add-member`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "eventId": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+  "userId": "g1h2i3j4-k5l6-7890-mnop-1234567890ab"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -560,18 +1181,46 @@ curl -X POST http://localhost:5000/events/add-member \
 }
 ```
 
-**Remove a user from an event:**
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the event creator can add participants"
+}
+```
+
+**Example:**
 ```bash
-curl -X POST http://localhost:5000/events/remove-member \
+curl -X POST http://localhost:5000/events/add-member \
+  -b "token=your-session-token" \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
   -d '{
-    "eventId": "event-uuid-1",
-    "userId": "user-uuid-2"
+    "eventId": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+    "userId": "g1h2i3j4-k5l6-7890-mnop-1234567890ab"
   }'
 ```
 
-**Remove Member Response:**
+### Remove Event Participant
+
+Removes a user from an event.
+
+- **URL**: `/events/remove-member`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "eventId": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+  "userId": "g1h2i3j4-k5l6-7890-mnop-1234567890ab"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -579,18 +1228,47 @@ curl -X POST http://localhost:5000/events/remove-member \
 }
 ```
 
-**Update an event title:**
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the event creator can remove participants"
+}
+```
+
+**Example:**
 ```bash
-curl -X POST http://localhost:5000/events/event-uuid-1/update-title \
+curl -X POST http://localhost:5000/events/remove-member \
+  -b "token=your-session-token" \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
   -d '{
-    "eventId": "event-uuid-1",
-    "title": "Updated Team Meeting"
+    "eventId": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+    "userId": "g1h2i3j4-k5l6-7890-mnop-1234567890ab"
   }'
 ```
 
-**Update Title Response:**
+### Update Event Title
+
+Updates an event's title.
+
+- **URL**: `/events/:id/update-title`
+- **Method**: `POST`
+- **URL Params**: `id=[uuid]` - Event ID
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "eventId": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+  "title": "Updated Project Kickoff Meeting"
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
@@ -598,406 +1276,506 @@ curl -X POST http://localhost:5000/events/event-uuid-1/update-title \
 }
 ```
 
-**Get event participants:**
-```bash
-curl -X GET http://localhost:5000/events/event-uuid-1/participants \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only the event creator can update the event"
+}
 ```
 
-**Get Participants Response:**
+**Example:**
+```bash
+curl -X POST http://localhost:5000/events/e1v2w3x4-y5z6-7890-abcd-9876543210zy/update-title \
+  -b "token=your-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "eventId": "e1v2w3x4-y5z6-7890-abcd-9876543210zy",
+    "title": "Updated Project Kickoff Meeting"
+  }'
+```
+
+### Get Event Participants
+
+Retrieves all participants of an event.
+
+- **URL**: `/events/:id/participants`
+- **Method**: `GET`
+- **URL Params**: `id=[uuid]` - Event ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
 ```json
 {
   "success": true,
   "participants": [
     {
-      "id": "user-uuid-1",
-      "firstName": "Jane",
-      "lastName": "Smith",
-      "email": "jane@example.com"
+      "id": "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "firstName": "John",
+      "lastName": "Doe",
+      "email": "john.doe@example.com"
     },
     {
-      "id": "user-uuid-2",
-      "firstName": "Bob",
+      "id": "g1h2i3j4-k5l6-7890-mnop-1234567890ab",
+      "firstName": "Alice",
       "lastName": "Johnson",
-      "email": "bob@example.com"
+      "email": "alice.johnson@example.com"
     }
   ]
 }
 ```
 
-**Fetch organization users for event creation:**
-```bash
-curl -X GET http://localhost:5000/events/fetch-users \
-  -b cookies.txt
-```
-
-**Fetch Users Response:**
-```json
-{
-  "success": true,
-  "users": [
-    {
-      "userId": "user-uuid-1",
-      "firstName": "Jane",
-      "lastName": "Smith",
-      "email": "jane@example.com"
-    },
-    {
-      "userId": "user-uuid-2",
-      "firstName": "Bob",
-      "lastName": "Johnson",
-      "email": "bob@example.com"
-    }
-  ]
-}
-```
-
-## Data Models and Relationships
-
-### User Model
-
-```typescript
-interface User {
-  id: string;            // UUID
-  firstName: string;
-  lastName: string;
-  email: string;         // Unique
-  phone: string;
-  address: string;
-  organizationId: string | null;
-  role: string;          // "Admin" or "User"
-  lastActive: string;    // ISO timestamp
-  createdAt: string;     // ISO timestamp
-  updatedAt: string;     // ISO timestamp
-}
-```
-
-### Organization Model
-
-```typescript
-interface Organization {
-  id: string;            // UUID
-  name: string;          // Unique
-  ownerId: string;       // UUID of user who created
-  createdAt: string;     // ISO timestamp
-  updatedAt: string;     // ISO timestamp
-}
-```
-
-### Project Model
-
-```typescript
-interface Project {
-  id: string;            // UUID
-  name: string;
-  description: string;
-  ownerId: string;       // UUID of user who created
-  organizationId: string; // UUID of organization
-  parentProjectId: string | null; // UUID of parent project (hierarchical)
-  createdAt: string;     // ISO timestamp
-  updatedAt: string;     // ISO timestamp
-  
-  // Returned in responses but not in model
-  participants?: User[];
-  childProjects?: Project[];
-}
-```
-
-### Event Model
-
-```typescript
-interface Event {
-  id: string;            // UUID
-  title: string;
-  date: string;          // ISO date
-  startTime: string;     // ISO time
-  endTime: string;       // ISO time
-  organizationId: string; // UUID of organization
-  createdById: string;   // UUID of creator user
-  importance: string;    // "not important", "important", "very important"
-  createdAt: string;     // ISO timestamp
-  updatedAt: string;     // ISO timestamp
-  
-  // Returned in responses but not in model
-  participants?: User[];
-  createdBy?: User;
-}
-```
-
-### Session Model
-
-```typescript
-interface Session {
-  id: string;            // UUID
-  userId: string;        // UUID of related user
-  token: string;         // Unique session token
-  expiresAt: string;     // ISO timestamp
-  createdAt: string;     // ISO timestamp
-}
-```
-
-### File Model
-
-```typescript
-interface File {
-  id: string;            // UUID
-  fileName: string;
-  bucketName: string;
-  objectName: string;
-  contentType: string;
-  uploadedAt: string;    // ISO timestamp
-  isDeleted: boolean;
-  deletedAt: string | null; // ISO timestamp
-  uploaderId: string;    // UUID of user who uploaded
-  organizationId: string; // UUID of organization
-  isPublic: boolean;
-}
-```
-
-### InviteCode Model
-
-```typescript
-interface InviteCode {
-  id: string;            // UUID
-  value: string;         // The actual code
-  organizationId: string; // UUID of organization
-  expirationTime: string; // ISO timestamp
-  createdAt: string;     // ISO timestamp
-  updatedAt: string;     // ISO timestamp
-}
-```
-
-### Key Relationships
-
-- **User** belongs to an **Organization** (optional)
-- **Organization** has many **Users**
-- **Project** belongs to an **Organization**
-- **Project** can have a parent **Project** (hierarchical structure)
-- **Project** has many **Users** as participants (many-to-many)
-- **Event** belongs to an **Organization**
-- **Event** is created by a **User**
-- **Event** has many **Users** as participants (many-to-many)
-- **File** is uploaded by a **User**
-- **File** belongs to an **Organization**
-- **InviteCode** belongs to an **Organization**
-- **Session** belongs to a **User**
-
-## Application Architecture
-
-### Architecture Overview
-
-Hello Pulse follows a clean architecture approach with domain-driven design principles:
-
-```
-┌─────────────────────────────────────────┐
-│                                         │
-│                API Layer                │
-│  (Handlers, Routes, Request/Response)   │
-│                                         │
-├─────────────────────────────────────────┤
-│                                         │
-│               Service Layer             │
-│          (Business Logic)               │
-│                                         │
-├─────────────────────────────────────────┤
-│                                         │
-│             Repository Layer            │
-│             (Data Access)               │
-│                                         │
-├─────────────────────────────────────────┤
-│                                         │
-│               Domain Layer              │
-│               (Models)                  │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-### Layer Structure
-
-1. **Domain Models Layer**
-   - Contains business entities (User, Organization, Project, Event, etc.)
-   - Defines core business rules and validation
-
-2. **Repository Layer**
-   - Abstracts data access operations
-   - Provides CRUD operations for domain models
-   - Handles database interactions
-
-3. **Service Layer**
-   - Contains business logic
-   - Orchestrates operations across multiple repositories
-   - Implements domain-specific workflows
-   - Handles authorization rules
-
-4. **API Handler Layer**
-   - Manages HTTP requests/responses
-   - Handles request validation
-   - Translates between HTTP and domain objects
-   - Returns appropriate status codes and responses
-
-### Authentication Flow
-
-1. User submits credentials (email/password)
-2. Server authenticates and creates a session with JWT token
-3. Token is sent to client as an HTTP-only cookie
-4. Client includes cookie in subsequent requests
-5. Auth middleware validates token and attaches user to request context
-6. Protected routes check for authenticated user in context
-
-### Infrastructure Components
-
-- **Web Server**: Go with Gin framework
-- **Database**: PostgreSQL with pgvector extension
-- **File Storage**: MinIO (S3-compatible object storage)
-- **API Gateway**: Nginx as reverse proxy
-- **Development**: Docker and Docker Compose
-
-## Error Handling
-
-### Common Error Responses
-
+**Error Response:**
+- **Code**: 404 Not Found
+- **Content**:
 ```json
 {
   "success": false,
-  "error": "Error message"
+  "error": "Event not found"
 }
 ```
 
-### Common Error Messages
-
-- Authentication: "Unauthorized", "Invalid credentials"
-- Organization: "User already belongs to an organization", "Invalid invite code"
-- Projects: "Project not found", "Access denied", "Only the project owner can update the project"
-- Events: "Event not found", "Only the event creator can update the event"
-
-### HTTP Status Codes
-
-- 200: Success
-- 400: Bad Request (invalid input)
-- 401: Unauthorized (authentication required)
-- 403: Forbidden (insufficient permissions)
-- 404: Not Found (resource doesn't exist)
-- 500: Internal Server Error
-
-## Testing with curl
-
-For convenience, here's a complete workflow for testing the API with curl:
-
-### Setup Environment Variables
-
+**Example:**
 ```bash
-# Base URL
-BASE_URL=http://localhost:5000
-
-# Create a file to store cookies
-touch cookies.txt
+curl -X GET http://localhost:5000/events/e1v2w3x4-y5z6-7890-abcd-9876543210zy/participants \
+  -b "token=your-session-token"
 ```
 
-### User Registration and Authentication
+---
 
-```bash
-# Register a new user
-curl -X POST $BASE_URL/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "first_name": "John",
-    "last_name": "Doe",
-    "phone": "5551234567",
-    "address": "123 Main St",
-    "password": "securepassword"
-  }'
+## File Management
 
-# Login to get authentication cookie
-curl -X POST $BASE_URL/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "securepassword"
-  }' \
-  -c cookies.txt
+### Upload File
 
-# Verify current user
-curl -X GET $BASE_URL/me \
-  -b cookies.txt
+Uploads a file to the storage system.
+
+- **URL**: `/files`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+- **Content-Type**: `multipart/form-data`
+
+**Form Parameters:**
+- `file`: The file to upload
+- `isPublic`: "true" if the file should be publicly accessible, "false" otherwise
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "File uploaded successfully",
+  "file": {
+    "id": "f1i2l3e4-5678-90ab-cdef-1234567890ab",
+    "fileName": "presentation.pdf",
+    "contentType": "application/pdf",
+    "size": 2048576,
+    "uploadedAt": "2023-09-22T16:45:30Z",
+    "isPublic": true
+  }
+}
 ```
 
-### Organization Management
-
-```bash
-# Create an organization
-curl -X POST $BASE_URL/organizations \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "name": "My Organization"
-  }'
-
-# Create an invite code
-curl -X POST $BASE_URL/organizations/invite-codes \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "expirationTimeMs": 1672531200000
-  }'
-
-# View invite codes
-curl -X GET $BASE_URL/organizations/invite-codes \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "File size exceeds the 100 MB limit"
+}
 ```
 
-### Project Management
-
+**Example:**
 ```bash
-# Create a project
-curl -X POST $BASE_URL/projects \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "projectName": "New Project",
-    "projectDesc": "Project description",
-    "parentProjectId": null
-  }'
+curl -X POST http://localhost:5000/files \
+  -b "token=your-session-token" \
+  -F "file=@/path/to/presentation.pdf" \
+  -F "isPublic=true"
+```
 
-# List all projects
-curl -X GET $BASE_URL/projects \
-  -b cookies.txt
+### Get User Files
 
-# Add a user to a project (replace with actual IDs)
-curl -X POST $BASE_URL/projects/add-user \
+Retrieves files uploaded by the current user.
+
+- **URL**: `/files`
+- **Method**: `GET`
+- **Query Params**: `includeDeleted=[boolean]` - Whether to include soft-deleted files
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "files": [
+    {
+      "id": "f1i2l3e4-5678-90ab-cdef-1234567890ab",
+      "fileName": "presentation.pdf",
+      "contentType": "application/pdf",
+      "size": 2048576,
+      "uploadedAt": "2023-09-22T16:45:30Z",
+      "isPublic": true,
+      "isDeleted": false
+    },
+    {
+      "id": "a1b2c3d4-5678-90ab-cdef-9876543210zy",
+      "fileName": "document.docx",
+      "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 1048576,
+      "uploadedAt": "2023-09-20T14:30:00Z",
+      "isPublic": false,
+      "isDeleted": false
+    }
+  ]
+}
+```
+
+**Error Response:**
+- **Code**: 401 Unauthorized
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Unauthorized"
+}
+```
+
+**Example:**
+```bash
+curl -X GET "http://localhost:5000/files?includeDeleted=false" \
+  -b "token=your-session-token"
+```
+
+### Get Organization Files
+
+Retrieves files for the current user's organization.
+
+- **URL**: `/files/organization`
+- **Method**: `GET`
+- **Query Params**: `includeDeleted=[boolean]` - Whether to include soft-deleted files
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "files": [
+    {
+      "id": "f1i2l3e4-5678-90ab-cdef-1234567890ab",
+      "fileName": "presentation.pdf",
+      "contentType": "application/pdf",
+      "size": 2048576,
+      "uploadedAt": "2023-09-22T16:45:30Z",
+      "isPublic": true,
+      "isDeleted": false,
+      "uploaderId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab"
+    },
+    {
+      "id": "a1b2c3d4-5678-90ab-cdef-9876543210zy",
+      "fileName": "document.docx",
+      "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 1048576,
+      "uploadedAt": "2023-09-20T14:30:00Z",
+      "isPublic": false,
+      "isDeleted": false,
+      "uploaderId": "g1h2i3j4-k5l6-7890-mnop-1234567890ab"
+    }
+  ]
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "User does not belong to an organization"
+}
+```
+
+**Example:**
+```bash
+curl -X GET "http://localhost:5000/files/organization?includeDeleted=false" \
+  -b "token=your-session-token"
+```
+
+### Get File Types
+
+Returns a list of supported file types and their extensions.
+
+- **URL**: `/files/types`
+- **Method**: `GET`
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "fileTypes": {
+    "documents": [".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".md", ".csv", ".xls", ".xlsx"],
+    "images": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"],
+    "audio": [".mp3", ".wav", ".ogg", ".flac", ".m4a"],
+    "video": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
+    "archives": [".zip", ".rar", ".7z", ".tar", ".gz"]
+  }
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://localhost:5000/files/types \
+  -b "token=your-session-token"
+```
+
+### Get File by ID
+
+Retrieves details of a specific file.
+
+- **URL**: `/files/:id`
+- **Method**: `GET`
+- **URL Params**: `id=[uuid]` - File ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "file": {
+    "id": "f1i2l3e4-5678-90ab-cdef-1234567890ab",
+    "fileName": "presentation.pdf",
+    "contentType": "application/pdf",
+    "size": 2048576,
+    "uploadedAt": "2023-09-22T16:45:30Z",
+    "isPublic": true,
+    "isDeleted": false,
+    "uploaderId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab"
+  }
+}
+```
+
+**Error Response:**
+- **Code**: 404 Not Found
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "File not found"
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://localhost:5000/files/f1i2l3e4-5678-90ab-cdef-1234567890ab \
+  -b "token=your-session-token"
+```
+
+### Get File URL
+
+Generates a presigned URL for accessing a file.
+
+- **URL**: `/files/:id/url`
+- **Method**: `GET`
+- **URL Params**: `id=[uuid]` - File ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "url": "https://storage.example.com/path/to/file?signature=abc123&expires=1632345678"
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Access denied: you don't have permission to access this file"
+}
+```
+
+**Example:**
+```bash
+curl -X GET http://localhost:5000/files/f1i2l3e4-5678-90ab-cdef-1234567890ab/url \
+  -b "token=your-session-token"
+```
+
+### Soft Delete File
+
+Marks a file as deleted without removing it from storage.
+
+- **URL**: `/files/:id`
+- **Method**: `DELETE`
+- **URL Params**: `id=[uuid]` - File ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "File deleted successfully"
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Access denied: only the uploader can delete this file"
+}
+```
+
+**Example:**
+```bash
+curl -X DELETE http://localhost:5000/files/f1i2l3e4-5678-90ab-cdef-1234567890ab \
+  -b "token=your-session-token"
+```
+
+### Restore File
+
+Restores a soft-deleted file.
+
+- **URL**: `/files/:id/restore`
+- **Method**: `POST`
+- **URL Params**: `id=[uuid]` - File ID
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "File restored successfully"
+}
+```
+
+**Error Response:**
+- **Code**: 400 Bad Request
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "File is not deleted"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:5000/files/f1i2l3e4-5678-90ab-cdef-1234567890ab/restore \
+  -b "token=your-session-token"
+```
+
+### Batch Delete Files
+
+Soft-deletes multiple files at once.
+
+- **URL**: `/files/batch-delete`
+- **Method**: `POST`
+- **Auth Required**: Yes (Cookie)
+
+**Request Body:**
+```json
+{
+  "fileIds": [
+    "f1i2l3e4-5678-90ab-cdef-1234567890ab",
+    "a1b2c3d4-5678-90ab-cdef-9876543210zy"
+  ]
+}
+```
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "All files deleted successfully"
+}
+```
+
+**Error Response:**
+- **Code**: 206 Partial Content
+- **Content**:
+```json
+{
+  "success": false,
+  "message": "Some files could not be deleted",
+  "failedFiles": [
+    "a1b2c3d4-5678-90ab-cdef-9876543210zy"
+  ]
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:5000/files/batch-delete \
+  -b "token=your-session-token" \
   -H "Content-Type: application/json" \
-  -b cookies.txt \
   -d '{
-    "projectId": "project-uuid",
-    "userId": "another-user-uuid"
+    "fileIds": [
+      "f1i2l3e4-5678-90ab-cdef-1234567890ab",
+      "a1b2c3d4-5678-90ab-cdef-9876543210zy"
+    ]
   }'
 ```
 
-### Event Management
+### Run File Cleanup
 
-```bash
-# Create an event
-curl -X POST $BASE_URL/events \
-  -H "Content-Type: application/json" \
-  -b cookies.txt \
-  -d '{
-    "title": "Team Meeting",
-    "date": "2023-05-20",
-    "startTime": "14:00",
-    "endTime": "15:00",
-    "userIds": [],
-    "importance": "important"
-  }'
+Permanently deletes files that were soft-deleted before a threshold (admin only).
 
-# List all events
-curl -X GET $BASE_URL/events \
-  -b cookies.txt
+- **URL**: `/files/cleanup`
+- **Method**: `POST`
+- **Query Params**: `days=[integer]` - Number of days since deletion (default: 30)
+- **Auth Required**: Yes (Cookie)
+
+**Success Response:**
+- **Code**: 200 OK
+- **Content**:
+```json
+{
+  "success": true,
+  "message": "Cleanup completed successfully"
+}
 ```
 
-### Logout
-
-```bash
-# Logout
-curl -X POST $BASE_URL/logout \
-  -b cookies.txt
+**Error Response:**
+- **Code**: 403 Forbidden
+- **Content**:
+```json
+{
+  "success": false,
+  "error": "Only administrators can run cleanup"
+}
 ```
+
+**Example:**
+```bash
+curl -X POST "http://localhost:5000/files/cleanup?days=30" \
+  -b "token=your-session-token"
+```
+
+---
+
+This documentation covers all the API endpoints provided by the Hello Pulse platform. For any questions or additional assistance, please contact support at projectsengineer6@gmail.com.
