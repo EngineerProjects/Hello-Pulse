@@ -7,17 +7,20 @@ import (
 	"github.com/google/uuid"
 	"hello-pulse.fr/internal/models/user"
 	"hello-pulse.fr/internal/services/organization"
+	"hello-pulse.fr/pkg/security"
 )
 
 // Handler handles organization API endpoints
 type Handler struct {
 	orgService *organization.Service
+	securityService *security.AuthorizationService 
 }
 
 // NewHandler creates a new organization handler
-func NewHandler(orgService *organization.Service) *Handler {
+func NewHandler(orgService *organization.Service, securityService *security.AuthorizationService) *Handler {
 	return &Handler{
 		orgService: orgService,
+		securityService: securityService,
 	}
 }
 
@@ -162,8 +165,17 @@ func (h *Handler) CreateInviteCode(c *gin.Context) {
 		return
 	}
 
-	// Check if user is an admin
-	if user.Role != "Admin" {
+	// Check if user can create invite codes
+	canCreate, err := h.securityService.CanCreateInviteCode(c.Request.Context(), user.UserID, *user.OrganizationID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to check permissions",
+		})
+		return
+	}
+	
+	if !canCreate {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only administrators can create invite codes",
@@ -209,7 +221,16 @@ func (h *Handler) GetInviteCodes(c *gin.Context) {
 	}
 
 	// Check if user is an admin
-	if user.Role != "Admin" {
+	isAdmin, err := h.securityService.IsUserAdmin(c.Request.Context(), user.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to check user permissions",
+		})
+		return
+	}
+	
+	if !isAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only administrators can view invite codes",
@@ -282,7 +303,16 @@ func (h *Handler) DeleteInviteCode(c *gin.Context) {
 	}
 
 	// Check if user is an admin
-	if user.Role != "Admin" {
+	isAdmin, err := h.securityService.IsUserAdmin(c.Request.Context(), user.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to check user permissions",
+		})
+		return
+	}
+	
+	if !isAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only administrators can delete invite codes",

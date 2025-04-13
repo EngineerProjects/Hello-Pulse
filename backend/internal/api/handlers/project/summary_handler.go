@@ -7,19 +7,22 @@ import (
 	"github.com/google/uuid"
 	"hello-pulse.fr/internal/models/user"
 	"hello-pulse.fr/internal/services/project"
+	"hello-pulse.fr/pkg/security"
 )
 
 // SummaryHandler handles project summary API endpoints
 type SummaryHandler struct {
 	summaryService *project.SummaryService
 	projectService *project.Service
+	securityService *security.AuthorizationService
 }
 
 // NewSummaryHandler creates a new summary handler
-func NewSummaryHandler(summaryService *project.SummaryService, projectService *project.Service) *SummaryHandler {
+func NewSummaryHandler(summaryService *project.SummaryService, projectService *project.Service, securityService *security.AuthorizationService) *SummaryHandler {
 	return &SummaryHandler{
 		summaryService: summaryService,
 		projectService: projectService,
+		securityService: securityService,  
 	}
 }
 
@@ -68,6 +71,25 @@ func (h *SummaryHandler) CreateSummary(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
+	// Check if user can access this project
+	project, err := h.projectService.GetProject(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Project not found",
+		})
+		return
+	}
+
+	// Ensure user is in the same organization
+	if user.OrganizationID == nil || *user.OrganizationID != project.OrganizationID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   "Access denied",
+		})
+		return
+	}
+
 	// Create summary
 	summary, err := h.summaryService.CreateSummary(
 		req.Title,
@@ -99,6 +121,7 @@ func (h *SummaryHandler) CreateSummary(c *gin.Context) {
 	})
 }
 
+
 // GetProjectSummaries handles retrieving all summaries for a project
 func (h *SummaryHandler) GetProjectSummaries(c *gin.Context) {
 	// Get project ID from URL parameter
@@ -107,16 +130,6 @@ func (h *SummaryHandler) GetProjectSummaries(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"error":   "Invalid project ID",
-		})
-		return
-	}
-
-	// Get project details to verify user has access
-	project, err := h.projectService.GetProject(projectID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Project not found",
 		})
 		return
 	}
@@ -131,6 +144,16 @@ func (h *SummaryHandler) GetProjectSummaries(c *gin.Context) {
 		return
 	}
 	user := currentUser.(*user.User)
+
+	// Get project details to verify user has access
+	project, err := h.projectService.GetProject(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Project not found",
+		})
+		return
+	}
 
 	// Check if user has access to this project (belongs to same organization)
 	if user.OrganizationID == nil || *user.OrganizationID != project.OrganizationID {
@@ -269,6 +292,25 @@ func (h *SummaryHandler) UpdateSummary(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
+	// Get summary to verify user has access
+	summary, err := h.summaryService.GetSummary(summaryID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Summary not found",
+		})
+		return
+	}
+
+	// Check if user created this summary
+	if summary.CreatedBy != user.UserID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   "Only the creator can update this summary",
+		})
+		return
+	}
+
 	// Update summary
 	if err := h.summaryService.UpdateSummary(summaryID, req.Title, req.Content, user.UserID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -306,6 +348,25 @@ func (h *SummaryHandler) DeleteSummary(c *gin.Context) {
 		return
 	}
 	user := currentUser.(*user.User)
+
+	// Get summary to verify user has access
+	summary, err := h.summaryService.GetSummary(summaryID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Summary not found",
+		})
+		return
+	}
+
+	// Check if user created this summary
+	if summary.CreatedBy != user.UserID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   "Only the creator can delete this summary",
+		})
+		return
+	}
 
 	// Delete summary
 	if err := h.summaryService.DeleteSummary(summaryID, user.UserID); err != nil {

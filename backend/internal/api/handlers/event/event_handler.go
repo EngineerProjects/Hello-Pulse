@@ -8,17 +8,20 @@ import (
 	"github.com/google/uuid"
 	"hello-pulse.fr/internal/models/user"
 	"hello-pulse.fr/internal/services/event"
+	"hello-pulse.fr/pkg/security"
 )
 
 // Handler handles event API endpoints
 type Handler struct {
 	eventService *event.Service
+	securityService *security.AuthorizationService 
 }
 
 // NewHandler creates a new event handler
-func NewHandler(eventService *event.Service) *Handler {
+func NewHandler(eventService *event.Service, securityService *security.AuthorizationService) *Handler {
 	return &Handler{
 		eventService: eventService,
+		securityService: securityService,
 	}
 }
 
@@ -207,16 +210,6 @@ func (h *Handler) DeleteEvent(c *gin.Context) {
 		return
 	}
 
-	// Get event
-	event, err := h.eventService.GetEvent(eventID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Event not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -228,8 +221,17 @@ func (h *Handler) DeleteEvent(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user is the creator of the event
-	if event.CreatedByID != user.UserID {
+	// Check if user can modify this event
+	canModify, err := h.securityService.CanModifyEvent(c.Request.Context(), user.UserID, eventID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Event not found",
+		})
+		return
+	}
+	
+	if !canModify {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only the event creator can delete the event",
@@ -281,16 +283,6 @@ func (h *Handler) AddParticipant(c *gin.Context) {
 		return
 	}
 
-	// Get event
-	event, err := h.eventService.GetEvent(eventID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Event not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -302,8 +294,17 @@ func (h *Handler) AddParticipant(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user is the creator of the event
-	if event.CreatedByID != user.UserID {
+	// Check if user can modify this event
+	canModify, err := h.securityService.CanModifyEvent(c.Request.Context(), user.UserID, eventID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Event not found",
+		})
+		return
+	}
+	
+	if !canModify {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only the event creator can add participants",
@@ -325,6 +326,7 @@ func (h *Handler) AddParticipant(c *gin.Context) {
 		"message": "Participant added successfully",
 	})
 }
+
 
 // RemoveParticipant handles removing a user from an event
 func (h *Handler) RemoveParticipant(c *gin.Context) {
@@ -355,16 +357,6 @@ func (h *Handler) RemoveParticipant(c *gin.Context) {
 		return
 	}
 
-	// Get event
-	event, err := h.eventService.GetEvent(eventID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Event not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -376,8 +368,17 @@ func (h *Handler) RemoveParticipant(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user is the creator of the event
-	if event.CreatedByID != user.UserID {
+	// Check if user can modify this event
+	canModify, err := h.securityService.CanModifyEvent(c.Request.Context(), user.UserID, eventID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Event not found",
+		})
+		return
+	}
+	
+	if !canModify {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only the event creator can remove participants",
@@ -420,16 +421,6 @@ func (h *Handler) UpdateEventTitle(c *gin.Context) {
 		return
 	}
 
-	// Get event
-	event, err := h.eventService.GetEvent(eventID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Event not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -441,8 +432,17 @@ func (h *Handler) UpdateEventTitle(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user is the creator of the event
-	if event.CreatedByID != user.UserID {
+	// Check if user can modify this event
+	canModify, err := h.securityService.CanModifyEvent(c.Request.Context(), user.UserID, eventID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Event not found",
+		})
+		return
+	}
+	
+	if !canModify {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only the event creator can update the event",

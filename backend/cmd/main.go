@@ -28,6 +28,7 @@ import (
 	projectservice "hello-pulse.fr/internal/services/project"
 	"hello-pulse.fr/pkg/config"
 	"hello-pulse.fr/pkg/database"
+	"hello-pulse.fr/pkg/security"
 	"hello-pulse.fr/pkg/storage"
 )
 
@@ -38,7 +39,7 @@ func main() {
 	appConfig := config.LoadConfig()
 	storageConfig := config.LoadStorageConfig()
 
-	// Connect to database (using existing GORM-based implementation)
+	// Connect to database
 	database.Connect()
 
 	// Run migrations
@@ -51,6 +52,25 @@ func main() {
 		&event.Event{},
 		&fileModel.File{},
 		&invite.InviteCode{},
+	)
+
+	// Initialize repositories
+	userRepository := userrepo.NewRepository(database.DB)
+	sessionRepository := authrepo.NewRepository(database.DB)
+	orgRepository := orgrepo.NewRepository(database.DB)
+	inviteRepository := inviterepo.NewRepository(database.DB)
+	projectRepository := projectrepo.NewRepository(database.DB)
+	summaryRepository := projectrepo.NewSummaryRepository(database.DB)
+	eventRepository := eventrepo.NewRepository(database.DB)
+	fileRepository := filerepo.NewRepository(database.DB)
+	
+	// Initialize security service
+	securityService := security.NewAuthorizationService(
+		fileRepository,
+		projectRepository,
+		orgRepository,
+		userRepository,
+		eventRepository,
 	)
 
 	// Initialize storage provider
@@ -67,25 +87,18 @@ func main() {
 			log.Printf("Warning: Failed to initialize storage provider: %v", err)
 			log.Println("File storage functionality will be unavailable")
 		} else {
-			// Initialize repositories
-			fileRepository := filerepo.NewRepository(database.DB)
-			
-			// Initialize file service
-			fileService = fileservice.NewService(fileRepository, storageProvider, storageConfig.DefaultBucket)
+			// Initialize file service with security service
+			fileService = fileservice.NewService(
+				fileRepository, 
+				storageProvider, 
+				storageConfig.DefaultBucket,
+				securityService,
+			)
 			
 			// Start the file cleanup background task
 			StartFileCleanupTask(fileService)
 		}
 	}
-
-	// Initialize repositories
-	userRepository := userrepo.NewRepository(database.DB)
-	sessionRepository := authrepo.NewRepository(database.DB)
-	orgRepository := orgrepo.NewRepository(database.DB)
-	inviteRepository := inviterepo.NewRepository(database.DB)
-	projectRepository := projectrepo.NewRepository(database.DB)
-	summaryRepository := projectrepo.NewSummaryRepository(database.DB)
-	eventRepository := eventrepo.NewRepository(database.DB)
 
 	// Initialize services
 	authService := authservice.NewService(userRepository, sessionRepository)
@@ -97,7 +110,7 @@ func main() {
 	r := gin.Default()
 	r.MaxMultipartMemory = 100 << 20 // 100 MiB for file uploads
 
-	// Setup routes
+	// Setup routes with security service
 	routes.Setup(
 		r,
 		database.DB,
@@ -106,6 +119,7 @@ func main() {
 		orgService,
 		eventService,
 		fileService,
+		securityService,
 	)
 
 	// Start server
