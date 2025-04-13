@@ -4,7 +4,7 @@
 
 Hello Pulse is a collaborative brainstorming platform powered by artificial intelligence, designed according to a modern and scalable microservices architecture. This architecture allows for independent evolution of components, high availability, and integration of cutting-edge AI technologies.
 
-![Hello Pulse Architecture](statics/Untitled-2025-03-16-2005.svg)
+![Hello Pulse Architecture](statics/images/Untitled-2025-03-16-2005.svg)
 
 ## Layer Structure
 

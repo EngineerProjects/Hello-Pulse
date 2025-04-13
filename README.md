@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/statics/logo.png" alt="Hello Pulse Logo" width="200">
+  <img src="docs/statics/images/logo.png" alt="Hello Pulse Logo" width="200">
   <h1>Hello Pulse</h1>
   <p>A collaborative brainstorming platform powered by artificial intelligence</p>
 </div>

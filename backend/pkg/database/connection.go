@@ -48,12 +48,12 @@ func ensureExtensions(db *gorm.DB) {
 	}
 	log.Println("uuid-ossp extension ensured")
 
-	// Create vector extension for AI features
-	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector;").Error; err != nil {
-		log.Println("Warning: pgvector extension failed to load. Make sure it's installed if you need vector capabilities.")
-	} else {
-		log.Println("pgvector extension ensured")
-	}
+	// Create vector extension for AI features -- Uncomment if needed
+	// if err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector;").Error; err != nil {
+	// 	log.Println("Warning: pgvector extension failed to load. Make sure it's installed if you need vector capabilities.")
+	// } else {
+	// 	log.Println("pgvector extension ensured")
+	// }
 }
 
 // RunMigrations runs the database migrations for all models

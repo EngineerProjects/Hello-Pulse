@@ -13,6 +13,7 @@ echo "Starting Hello Pulse development environment..."
 docker compose -f docker-compose.dev.yml up -d --build
 
 echo "Services:"
+echo "- Frontend: http://localhost:3000"
 echo "- Backend API: http://localhost:5000"
 echo "- API via Nginx: http://localhost:7000"
 echo "- MinIO Console: http://localhost:8900"
