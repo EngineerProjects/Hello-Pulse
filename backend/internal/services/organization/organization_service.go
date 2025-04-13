@@ -156,3 +156,20 @@ func (s *Service) generateRandomString(length int) (string, error) {
 func (s *Service) msToTime(ms int64) time.Time {
 	return time.Unix(0, ms*int64(time.Millisecond))
 }
+
+// DeleteInviteCode deletes an invite code for an organization
+func (s *Service) DeleteInviteCode(inviteCodeID, orgID uuid.UUID) error {
+	// Get invite code
+	inviteCode, err := s.inviteRepo.FindByID(inviteCodeID)
+	if err != nil {
+		return errors.New("invite code not found")
+	}
+
+	// Check if invite code belongs to the organization
+	if inviteCode.OrganizationID != orgID {
+		return errors.New("invite code does not belong to this organization")
+	}
+
+	// Delete invite code
+	return s.inviteRepo.Delete(inviteCodeID)
+}

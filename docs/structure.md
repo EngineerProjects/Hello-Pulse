@@ -76,7 +76,7 @@ Hello-Pulse/
 └── scripts/                       # Utility scripts
 ```
 
-## AI Services Structure
+## AI Services Structure (Python)
 
 ```
 ai-services/

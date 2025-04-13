@@ -15,13 +15,15 @@ import (
 type Service struct {
 	projectRepo *projectrepo.Repository
 	userRepo    *userrepo.Repository
+	summaryRepo *projectrepo.SummaryRepository
 }
 
 // NewService creates a new project service
-func NewService(projectRepo *projectrepo.Repository, userRepo *userrepo.Repository) *Service {
+func NewService(projectRepo *projectrepo.Repository, userRepo *userrepo.Repository, summaryRepo *projectrepo.SummaryRepository) *Service {
 	return &Service{
 		projectRepo: projectRepo,
 		userRepo:    userRepo,
+		summaryRepo: summaryRepo,
 	}
 }
 
@@ -107,6 +109,11 @@ func (s *Service) DeleteProject(projectID uuid.UUID) error {
 		if err := s.DeleteProject(child.ProjectID); err != nil {
 			return err
 		}
+	}
+
+	// Delete all project summaries
+	if err := s.summaryRepo.DeleteByProject(projectID); err != nil {
+		return err
 	}
 
 	// Clear project participants

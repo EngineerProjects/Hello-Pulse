@@ -2,30 +2,45 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	
 	"hello-pulse.fr/internal/api/handlers/auth"
 	"hello-pulse.fr/internal/api/handlers/event"
+	"hello-pulse.fr/internal/api/handlers/file"
 	"hello-pulse.fr/internal/api/handlers/organization"
 	"hello-pulse.fr/internal/api/handlers/project"
 	"hello-pulse.fr/internal/api/middleware"
+	
 	authservice "hello-pulse.fr/internal/services/auth"
 	eventservice "hello-pulse.fr/internal/services/event"
+	fileservice "hello-pulse.fr/internal/services/file"
 	orgservice "hello-pulse.fr/internal/services/organization"
 	projectservice "hello-pulse.fr/internal/services/project"
+	
+	projectrepo "hello-pulse.fr/internal/repositories/project"
 )
 
 // Setup configures all API routes
 func Setup(
 	router *gin.Engine,
+	db *gorm.DB,
 	authService *authservice.Service,
 	projectService *projectservice.Service,
 	orgService *orgservice.Service,
 	eventService *eventservice.Service,
+	fileService *fileservice.Service,
 ) {
 	// Create handlers
 	authHandler := auth.NewHandler(authService)
 	projectHandler := project.NewHandler(projectService)
 	orgHandler := organization.NewHandler(orgService)
 	eventHandler := event.NewHandler(eventService)
+	fileHandler := file.NewHandler(fileService)
+
+	// Create summary repository, service and handler
+	summaryRepo := projectrepo.NewSummaryRepository(db)
+	summaryService := projectservice.NewSummaryService(summaryRepo, projectrepo.NewRepository(db))
+	summaryHandler := project.NewSummaryHandler(summaryService, projectService)
 
 	// Public routes
 	router.POST("/register", authHandler.Register)
@@ -43,6 +58,7 @@ func Setup(
 		authorized.POST("/organizations/join", orgHandler.JoinOrganization)
 		authorized.GET("/organizations/invite-codes", orgHandler.GetInviteCodes)
 		authorized.POST("/organizations/invite-codes", orgHandler.CreateInviteCode)
+		authorized.DELETE("/organizations/invite-codes", orgHandler.DeleteInviteCode)
 
 		// Project routes
 		authorized.POST("/projects", projectHandler.CreateProject)
@@ -51,6 +67,13 @@ func Setup(
 		authorized.PUT("/projects/:id", projectHandler.UpdateProject)
 		authorized.DELETE("/projects/:id", projectHandler.DeleteProject)
 		authorized.POST("/projects/add-user", projectHandler.AddParticipant)
+
+		// Summary routes
+		authorized.POST("/projects/summaries", summaryHandler.CreateSummary)
+		authorized.GET("/projects/:id/summaries", summaryHandler.GetProjectSummaries)
+		authorized.GET("/projects/summaries/:id", summaryHandler.GetSummary)
+		authorized.PUT("/projects/summaries/:id", summaryHandler.UpdateSummary)
+		authorized.DELETE("/projects/summaries/:id", summaryHandler.DeleteSummary)
 
 		// Event routes
 		authorized.POST("/events", eventHandler.CreateEvent)
@@ -61,5 +84,14 @@ func Setup(
 		authorized.POST("/events/:id/update-title", eventHandler.UpdateEventTitle)
 		authorized.GET("/events/:id/participants", eventHandler.GetEventParticipants)
 		authorized.GET("/events/fetch-users", eventHandler.GetOrganizationUsers)
+		
+		// File routes
+		authorized.POST("/files", fileHandler.UploadFile)
+		authorized.GET("/files", fileHandler.GetUserFiles)
+		authorized.GET("/files/organization", fileHandler.GetOrganizationFiles)
+		authorized.DELETE("/files/:id", fileHandler.SoftDeleteFile)
+		authorized.POST("/files/:id/restore", fileHandler.RestoreFile)
+		authorized.GET("/files/types", fileHandler.GetFileTypes)
+		authorized.GET("/files/:id", fileHandler.GetFileByID)
 	}
 }

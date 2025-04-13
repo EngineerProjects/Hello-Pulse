@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"hello-pulse.fr/internal/models/user"
 	"hello-pulse.fr/internal/services/organization"
 )
@@ -243,5 +244,73 @@ func (h *Handler) GetInviteCodes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"codes":   codes,
+	})
+}
+
+// DeleteInviteCode handles deleting an invite code for an organization
+func (h *Handler) DeleteInviteCode(c *gin.Context) {
+	var req struct {
+		ID string `json:"id" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid request payload",
+		})
+		return
+	}
+
+	// Get current user from context
+	currentUser, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "Unauthorized",
+		})
+		return
+	}
+	user := currentUser.(*user.User)
+
+	// Check if user belongs to an organization
+	if user.OrganizationID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "User does not belong to an organization",
+		})
+		return
+	}
+
+	// Check if user is an admin
+	if user.Role != "Admin" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   "Only administrators can delete invite codes",
+		})
+		return
+	}
+
+	// Parse the invite code ID
+	inviteCodeID, err := uuid.Parse(req.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid invite code ID",
+		})
+		return
+	}
+
+	// Delete the invite code
+	if err := h.orgService.DeleteInviteCode(inviteCodeID, *user.OrganizationID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Invite code deleted successfully",
 	})
 }

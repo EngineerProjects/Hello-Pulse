@@ -14,12 +14,14 @@ import (
 	"hello-pulse.fr/internal/models/user"
 	authrepo "hello-pulse.fr/internal/repositories/auth"
 	eventrepo "hello-pulse.fr/internal/repositories/event"
+	filerepo "hello-pulse.fr/internal/repositories/file"
 	inviterepo "hello-pulse.fr/internal/repositories/invite"
 	orgrepo "hello-pulse.fr/internal/repositories/organization"
 	projectrepo "hello-pulse.fr/internal/repositories/project"
 	userrepo "hello-pulse.fr/internal/repositories/user"
 	authservice "hello-pulse.fr/internal/services/auth"
 	eventservice "hello-pulse.fr/internal/services/event"
+	fileservice "hello-pulse.fr/internal/services/file"
 	orgservice "hello-pulse.fr/internal/services/organization"
 	projectservice "hello-pulse.fr/internal/services/project"
 	"hello-pulse.fr/pkg/config"
@@ -38,6 +40,7 @@ func main() {
 		&user.User{},
 		&organization.Organization{},
 		&project.Project{},
+		&project.Summary{}, // Add this line for project summaries
 		&auth.Session{},
 		&event.Event{},
 		&file.File{},
@@ -50,20 +53,31 @@ func main() {
 	orgRepository := orgrepo.NewRepository(database.DB)
 	inviteRepository := inviterepo.NewRepository(database.DB)
 	projectRepository := projectrepo.NewRepository(database.DB)
+	summaryRepository := projectrepo.NewSummaryRepository(database.DB) // Initialize summary repository
 	eventRepository := eventrepo.NewRepository(database.DB)
+	fileRepository := filerepo.NewRepository(database.DB)
 
 	// Initialize services
 	authService := authservice.NewService(userRepository, sessionRepository)
-	projectService := projectservice.NewService(projectRepository, userRepository)
+	projectService := projectservice.NewService(projectRepository, userRepository, summaryRepository) // Pass summary repository
 	orgService := orgservice.NewService(orgRepository, userRepository, inviteRepository)
 	eventService := eventservice.NewService(eventRepository, userRepository)
+	fileService := fileservice.NewService(fileRepository)
 
 	// Initialize Gin router
 	r := gin.Default()
 	r.MaxMultipartMemory = 30 << 30 // 30 GiB
 
 	// Setup routes
-	routes.Setup(r, authService, projectService, orgService, eventService)
+	routes.Setup(
+		r,
+		database.DB,
+		authService,
+		projectService,
+		orgService,
+		eventService,
+		fileService,
+	)
 
 	// Start server
 	log.Printf("Starting server on port %s", appConfig.Port)
