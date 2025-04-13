@@ -1,8 +1,7 @@
+// internal/api/routes/routes.go
 package routes
 
 import (
-	"log"
-
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	
@@ -18,8 +17,8 @@ import (
 	fileservice "hello-pulse.fr/internal/services/file"
 	orgservice "hello-pulse.fr/internal/services/organization"
 	projectservice "hello-pulse.fr/internal/services/project"
-	
 	projectrepo "hello-pulse.fr/internal/repositories/project"
+	"hello-pulse.fr/pkg/security"
 )
 
 // Setup configures all API routes
@@ -31,77 +30,95 @@ func Setup(
 	orgService *orgservice.Service,
 	eventService *eventservice.Service,
 	fileService *fileservice.Service,
+	securityService *security.AuthorizationService,
 ) {
 	// Create handlers
 	authHandler := auth.NewHandler(authService)
-	projectHandler := project.NewHandler(projectService)
-	orgHandler := organization.NewHandler(orgService)
-	eventHandler := event.NewHandler(eventService)
+	projectHandler := project.NewHandler(projectService, securityService)
+	orgHandler := organization.NewHandler(orgService, securityService)
+	eventHandler := event.NewHandler(eventService, securityService)
+	fileHandler := file.NewHandler(fileService, securityService)
 
-	// Create summary repository, service and handler
-	summaryRepo := projectrepo.NewSummaryRepository(db)
-	summaryService := projectservice.NewSummaryService(summaryRepo, projectrepo.NewRepository(db))
-	summaryHandler := project.NewSummaryHandler(summaryService, projectService)
+	// Create summary handler - add this line
+	summaryRepository := projectrepo.NewSummaryRepository(db)
+	summaryService := projectservice.NewSummaryService(summaryRepository, projectrepo.NewRepository(db))
+	summaryHandler := project.NewSummaryHandler(summaryService, projectService, securityService)
+
 
 	// Public routes
 	router.POST("/register", authHandler.Register)
 	router.POST("/login", authHandler.Login)
 	router.POST("/logout", authHandler.Logout)
 
-	// Protected routes
-	authorized := router.Group("/", middleware.AuthMiddleware(authService))
+	// Authentication middleware
+	authMiddleware := middleware.AuthMiddleware(authService)
+	
+	// Security middleware - adds security context to requests
+	securityMiddleware := middleware.SecurityMiddleware(securityService)
+	
+	// Organization required middleware
+	orgRequiredMiddleware := middleware.OrganizationRequiredMiddleware(securityService)
+	
+	// Admin required middleware
+	adminRequiredMiddleware := middleware.AdminRequiredMiddleware(securityService)
+
+	// Basic authentication
+	protected := router.Group("/", authMiddleware, securityMiddleware)
+	
+	// Organization-scoped routes
+	orgProtected := protected.Group("/", orgRequiredMiddleware)
+
+	// Configure routes
 	{
 		// User routes
-		authorized.GET("/me", authHandler.Me)
+		protected.GET("/me", authHandler.Me)
 
 		// Organization routes
-		authorized.POST("/organizations", orgHandler.CreateOrganization)
-		authorized.POST("/organizations/join", orgHandler.JoinOrganization)
-		authorized.GET("/organizations/invite-codes", orgHandler.GetInviteCodes)
-		authorized.POST("/organizations/invite-codes", orgHandler.CreateInviteCode)
-		authorized.DELETE("/organizations/invite-codes", orgHandler.DeleteInviteCode)
+		protected.POST("/organizations", orgHandler.CreateOrganization)
+		protected.POST("/organizations/join", orgHandler.JoinOrganization)
+		
+		// Organization routes that require organization membership
+		orgProtected.GET("/organizations/invite-codes", adminRequiredMiddleware, orgHandler.GetInviteCodes)
+		orgProtected.POST("/organizations/invite-codes", adminRequiredMiddleware, orgHandler.CreateInviteCode)
+		orgProtected.DELETE("/organizations/invite-codes", adminRequiredMiddleware, orgHandler.DeleteInviteCode)
 
 		// Project routes
-		authorized.POST("/projects", projectHandler.CreateProject)
-		authorized.GET("/projects", projectHandler.GetProjects)
-		authorized.GET("/projects/:id", projectHandler.GetProject)
-		authorized.PUT("/projects/:id", projectHandler.UpdateProject)
-		authorized.DELETE("/projects/:id", projectHandler.DeleteProject)
-		authorized.POST("/projects/add-user", projectHandler.AddParticipant)
+		orgProtected.POST("/projects", projectHandler.CreateProject)
+		orgProtected.GET("/projects", projectHandler.GetProjects)
+		orgProtected.GET("/projects/:id", projectHandler.GetProject)
+		orgProtected.PUT("/projects/:id", middleware.ResourceOwnerMiddleware(securityService, "project"), projectHandler.UpdateProject)
+		orgProtected.DELETE("/projects/:id", middleware.ResourceOwnerMiddleware(securityService, "project"), projectHandler.DeleteProject)
+		orgProtected.POST("/projects/add-user", projectHandler.AddParticipant)
 
 		// Summary routes
-		authorized.POST("/projects/summaries", summaryHandler.CreateSummary)
-		authorized.GET("/projects/:id/summaries", summaryHandler.GetProjectSummaries)
-		authorized.GET("/projects/summaries/:id", summaryHandler.GetSummary)
-		authorized.PUT("/projects/summaries/:id", summaryHandler.UpdateSummary)
-		authorized.DELETE("/projects/summaries/:id", summaryHandler.DeleteSummary)
-
-		// Event routes
-		authorized.POST("/events", eventHandler.CreateEvent)
-		authorized.GET("/events", eventHandler.GetEvents)
-		authorized.DELETE("/events/:id", eventHandler.DeleteEvent)
-		authorized.POST("/events/add-member", eventHandler.AddParticipant)
-		authorized.POST("/events/remove-member", eventHandler.RemoveParticipant)
-		authorized.POST("/events/:id/update-title", eventHandler.UpdateEventTitle)
-		authorized.GET("/events/:id/participants", eventHandler.GetEventParticipants)
-		authorized.GET("/events/fetch-users", eventHandler.GetOrganizationUsers)
+		orgProtected.POST("/projects/summaries", summaryHandler.CreateSummary)
+		orgProtected.GET("/projects/:id/summaries", summaryHandler.GetProjectSummaries)
+		orgProtected.GET("/projects/summaries/:id", summaryHandler.GetSummary)
+		orgProtected.PUT("/projects/summaries/:id", summaryHandler.UpdateSummary)
+		orgProtected.DELETE("/projects/summaries/:id", summaryHandler.DeleteSummary)
 		
-		// File routes - but only if the file service is available
-		if fileService != nil {
-			fileHandler := file.NewHandler(fileService)
-			
-			authorized.POST("/files", fileHandler.UploadFile)
-			authorized.GET("/files", fileHandler.GetUserFiles)
-			authorized.GET("/files/organization", fileHandler.GetOrganizationFiles)
-			authorized.GET("/files/types", fileHandler.GetFileTypes)
-			authorized.GET("/files/:id", fileHandler.GetFileByID)
-			authorized.GET("/files/:id/url", fileHandler.GetFileURL)
-			authorized.DELETE("/files/:id", fileHandler.SoftDeleteFile)
-			authorized.POST("/files/:id/restore", fileHandler.RestoreFile)
-			authorized.POST("/files/batch-delete", fileHandler.BatchDeleteFiles)
-			authorized.POST("/files/cleanup", fileHandler.RunCleanup)
-		} else {
-			log.Println("File routes not configured: file service is unavailable")
-		}
+		// Event routes
+		orgProtected.POST("/events", eventHandler.CreateEvent)
+		orgProtected.GET("/events", eventHandler.GetEvents)
+		orgProtected.DELETE("/events/:id", middleware.ResourceOwnerMiddleware(securityService, "event"), eventHandler.DeleteEvent)
+		orgProtected.POST("/events/add-member", eventHandler.AddParticipant)
+		orgProtected.POST("/events/remove-member", eventHandler.RemoveParticipant)
+		orgProtected.POST("/events/:id/update-title", middleware.ResourceOwnerMiddleware(securityService, "event"), eventHandler.UpdateEventTitle)
+		orgProtected.GET("/events/:id/participants", eventHandler.GetEventParticipants)
+		orgProtected.GET("/events/fetch-users", eventHandler.GetOrganizationUsers)
+		
+		// File routes
+		orgProtected.POST("/files", fileHandler.UploadFile)
+		orgProtected.GET("/files", fileHandler.GetUserFiles)
+		orgProtected.GET("/files/organization", fileHandler.GetOrganizationFiles)
+		orgProtected.GET("/files/types", fileHandler.GetFileTypes)
+		orgProtected.GET("/files/:id", fileHandler.GetFileByID)
+		orgProtected.GET("/files/:id/url", fileHandler.GetFileURL)
+		orgProtected.DELETE("/files/:id", fileHandler.SoftDeleteFile)
+		orgProtected.POST("/files/:id/restore", fileHandler.RestoreFile)
+		orgProtected.POST("/files/batch-delete", fileHandler.BatchDeleteFiles)
+		orgProtected.POST("/files/cleanup", adminRequiredMiddleware, fileHandler.RunCleanup)
+		orgProtected.PUT("/files/:id/visibility", fileHandler.UpdateFileVisibility)
+		orgProtected.GET("/files/:id/download", fileHandler.DownloadFile)
 	}
 }

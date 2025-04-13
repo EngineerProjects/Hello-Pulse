@@ -17,14 +17,6 @@ type AppConfig struct {
 	FileExpiration time.Duration
 }
 
-// StorageConfig holds storage configuration
-type StorageConfig struct {
-	Endpoint        string
-	AccessKeyID     string
-	SecretAccessKey string
-	UseSSL          bool
-}
-
 // DBConfig holds database configuration
 type DBConfig struct {
 	User     string
@@ -46,18 +38,6 @@ func LoadConfig() *AppConfig {
 		CleanupTimer:   10 * 24 * time.Hour, // 10 days default
 		MaxGoroutines:  maxGoroutines,
 		FileExpiration: 10 * time.Minute,
-	}
-}
-
-// LoadStorageConfig loads the storage configuration
-func LoadStorageConfig() *StorageConfig {
-	useSSL, _ := strconv.ParseBool(GetEnv("MINIO_USE_SSL", "false"))
-	
-	return &StorageConfig{
-		Endpoint:        GetEnv("MINIO_ENDPOINT", "minio:9000"),
-		AccessKeyID:     GetEnv("MINIO_ROOT_USER", ""),
-		SecretAccessKey: GetEnv("MINIO_ROOT_PASSWORD", ""),
-		UseSSL:          useSSL,
 	}
 }
 

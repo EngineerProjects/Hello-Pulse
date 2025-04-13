@@ -7,18 +7,21 @@ import (
 	"github.com/google/uuid"
 	"hello-pulse.fr/internal/models/user"
 	"hello-pulse.fr/internal/services/project"
+	"hello-pulse.fr/pkg/security"
 )
 
 // Handler handles project API endpoints
 type Handler struct {
 	projectService *project.Service
+	securityService *security.AuthorizationService 
 }
 
 // NewHandler creates a new project handler
-func NewHandler(projectService *project.Service) *Handler {
-	return &Handler{
-		projectService: projectService,
-	}
+func NewHandler(projectService *project.Service, securityService *security.AuthorizationService) *Handler {
+    return &Handler{
+        projectService:  projectService,
+        securityService: securityService,
+    }
 }
 
 // CreateProjectRequest represents the create project request payload
@@ -155,15 +158,6 @@ func (h *Handler) GetProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.GetProject(projectID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Project not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -175,11 +169,30 @@ func (h *Handler) GetProject(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user has access to this project (belongs to same organization)
-	if user.OrganizationID == nil || *user.OrganizationID != project.OrganizationID {
+	// Check if user can access this project
+	canAccess, err := h.securityService.CanAccessProject(c.Request.Context(), user.UserID, projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Project not found",
+		})
+		return
+	}
+	
+	if !canAccess {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Access denied",
+		})
+		return
+	}
+
+	// Get project details
+	project, err := h.projectService.GetProject(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Project not found",
 		})
 		return
 	}
@@ -233,16 +246,6 @@ func (h *Handler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	// Verify project exists and user has access
-	project, err := h.projectService.GetProject(projectID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Project not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -254,8 +257,17 @@ func (h *Handler) UpdateProject(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user is the owner of the project
-	if project.OwnerID != user.UserID {
+	// Check if user can modify this project
+	canModify, err := h.securityService.CanModifyProject(c.Request.Context(), user.UserID, projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Project not found",
+		})
+		return
+	}
+	
+	if !canModify {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only the project owner can update the project",
@@ -289,16 +301,6 @@ func (h *Handler) DeleteProject(c *gin.Context) {
 		return
 	}
 
-	// Verify project exists and user has access
-	project, err := h.projectService.GetProject(projectID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Project not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -310,8 +312,17 @@ func (h *Handler) DeleteProject(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user is the owner of the project
-	if project.OwnerID != user.UserID {
+	// Check if user can modify this project
+	canModify, err := h.securityService.CanModifyProject(c.Request.Context(), user.UserID, projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Project not found",
+		})
+		return
+	}
+	
+	if !canModify {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only the project owner can delete the project",
@@ -362,16 +373,6 @@ func (h *Handler) AddParticipant(c *gin.Context) {
 		return
 	}
 
-	// Verify project exists and current user has access
-	project, err := h.projectService.GetProject(projectID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error":   "Project not found",
-		})
-		return
-	}
-
 	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
@@ -383,8 +384,17 @@ func (h *Handler) AddParticipant(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Check if user is the owner of the project
-	if project.OwnerID != user.UserID {
+	// Check if user can modify this project
+	canModify, err := h.securityService.CanModifyProject(c.Request.Context(), user.UserID, projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"error":   "Project not found",
+		})
+		return
+	}
+	
+	if !canModify {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only the project owner can add participants",

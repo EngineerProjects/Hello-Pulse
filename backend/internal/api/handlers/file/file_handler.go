@@ -1,3 +1,4 @@
+// internal/api/handlers/file/file_handler.go
 package file
 
 import (
@@ -9,17 +10,20 @@ import (
 	"github.com/google/uuid"
 	"hello-pulse.fr/internal/models/user"
 	"hello-pulse.fr/internal/services/file"
+	"hello-pulse.fr/pkg/security"
 )
 
 // Handler handles file API endpoints
 type Handler struct {
-	fileService *file.Service
+	fileService     *file.Service
+	securityService *security.AuthorizationService
 }
 
 // NewHandler creates a new file handler
-func NewHandler(fileService *file.Service) *Handler {
+func NewHandler(fileService *file.Service, securityService *security.AuthorizationService) *Handler {
 	return &Handler{
-		fileService: fileService,
+		fileService:     fileService,
+		securityService: securityService,
 	}
 }
 
@@ -114,11 +118,11 @@ func (h *Handler) GetUserFiles(c *gin.Context) {
 	includeDeleted := c.Query("includeDeleted") == "true"
 
 	// Get files
-	files, err := h.fileService.GetUserFiles(user.UserID, includeDeleted)
+	files, err := h.fileService.GetUserFiles(c.Request.Context(), user.UserID, includeDeleted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error":   "Failed to retrieve files",
+			"error":   "Failed to retrieve files: " + err.Error(),
 		})
 		return
 	}
@@ -169,11 +173,11 @@ func (h *Handler) GetOrganizationFiles(c *gin.Context) {
 	includeDeleted := c.Query("includeDeleted") == "true"
 
 	// Get files
-	files, err := h.fileService.GetOrganizationFiles(*user.OrganizationID, includeDeleted)
+	files, err := h.fileService.GetOrganizationFiles(c.Request.Context(), user.UserID, *user.OrganizationID, includeDeleted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error":   "Failed to retrieve files",
+			"error":   "Failed to retrieve files: " + err.Error(),
 		})
 		return
 	}
@@ -225,7 +229,14 @@ func (h *Handler) GetFileURL(c *gin.Context) {
 	// Get file URL
 	url, err := h.fileService.GetFileURL(c.Request.Context(), fileID, user.UserID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		statusCode := http.StatusBadRequest
+		if err == security.ErrAccessDenied {
+			statusCode = http.StatusForbidden
+		} else if err == security.ErrNotFound {
+			statusCode = http.StatusNotFound
+		}
+		
+		c.JSON(statusCode, gin.H{
 			"success": false,
 			"error":   err.Error(),
 		})
@@ -263,7 +274,14 @@ func (h *Handler) SoftDeleteFile(c *gin.Context) {
 
 	// Soft delete the file
 	if err := h.fileService.SoftDeleteFile(c.Request.Context(), fileID, user.UserID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		statusCode := http.StatusBadRequest
+		if err == security.ErrAccessDenied {
+			statusCode = http.StatusForbidden
+		} else if err == security.ErrNotFound {
+			statusCode = http.StatusNotFound
+		}
+		
+		c.JSON(statusCode, gin.H{
 			"success": false,
 			"error":   err.Error(),
 		})
@@ -301,7 +319,14 @@ func (h *Handler) RestoreFile(c *gin.Context) {
 
 	// Restore the file
 	if err := h.fileService.RestoreFile(c.Request.Context(), fileID, user.UserID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
+		statusCode := http.StatusBadRequest
+		if err == security.ErrAccessDenied {
+			statusCode = http.StatusForbidden
+		} else if err == security.ErrNotFound {
+			statusCode = http.StatusNotFound
+		}
+		
+		c.JSON(statusCode, gin.H{
 			"success": false,
 			"error":   err.Error(),
 		})
@@ -348,20 +373,16 @@ func (h *Handler) GetFileByID(c *gin.Context) {
 	}
 
 	// Get file
-	file, err := h.fileService.GetFile(fileID)
+	file, err := h.fileService.GetFile(c.Request.Context(), fileID, user.UserID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
+		statusCode := http.StatusNotFound
+		if err == security.ErrAccessDenied {
+			statusCode = http.StatusForbidden
+		}
+		
+		c.JSON(statusCode, gin.H{
 			"success": false,
-			"error":   "File not found",
-		})
-		return
-	}
-
-	// Check if user has access to the file
-	if file.UploaderID != user.UserID && !file.IsPublic && (user.OrganizationID == nil || file.OrganizationID != *user.OrganizationID) {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"error":   "Access denied",
+			"error":   err.Error(),
 		})
 		return
 	}
@@ -407,25 +428,37 @@ func (h *Handler) BatchDeleteFiles(c *gin.Context) {
 		return
 	}
 
-	// Process each file
-	var failed []string
+	// Convert string IDs to UUIDs
+	var fileIDs []uuid.UUID
 	for _, idStr := range req.FileIDs {
 		fileID, err := uuid.Parse(idStr)
 		if err != nil {
-			failed = append(failed, idStr)
-			continue
+			continue // Skip invalid IDs
 		}
-
-		if err := h.fileService.SoftDeleteFile(c.Request.Context(), fileID, user.UserID); err != nil {
-			failed = append(failed, idStr)
-		}
+		fileIDs = append(fileIDs, fileID)
 	}
 
-	if len(failed) > 0 {
+	// Batch delete files
+	failedIDs, err := h.fileService.BatchSoftDeleteFiles(c.Request.Context(), fileIDs, user.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to batch delete files: " + err.Error(),
+		})
+		return
+	}
+
+	if len(failedIDs) > 0 {
+		// Convert UUIDs back to strings for response
+		var failedIdStrings []string
+		for _, id := range failedIDs {
+			failedIdStrings = append(failedIdStrings, id.String())
+		}
+		
 		c.JSON(http.StatusPartialContent, gin.H{
 			"success":     false,
 			"message":     "Some files could not be deleted",
-			"failedFiles": failed,
+			"failedFiles": failedIdStrings,
 		})
 		return
 	}
@@ -438,7 +471,7 @@ func (h *Handler) BatchDeleteFiles(c *gin.Context) {
 
 // RunCleanup handles manual cleanup of expired deleted files
 func (h *Handler) RunCleanup(c *gin.Context) {
-	// This endpoint should be admin-only
+	// Get current user from context
 	currentUser, exists := c.Get("user")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -450,7 +483,16 @@ func (h *Handler) RunCleanup(c *gin.Context) {
 	user := currentUser.(*user.User)
 
 	// Check if user is an admin
-	if user.Role != "Admin" {
+	isAdmin, err := h.securityService.IsUserAdmin(c.Request.Context(), user.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to check user permission",
+		})
+		return
+	}
+	
+	if !isAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"error":   "Only administrators can run cleanup",
@@ -481,4 +523,130 @@ func (h *Handler) RunCleanup(c *gin.Context) {
 		"success": true,
 		"message": "Cleanup completed successfully",
 	})
+}
+
+// UpdateFileVisibility handles updating a file's public/private status
+func (h *Handler) UpdateFileVisibility(c *gin.Context) {
+	// Get current user from context
+	currentUser, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "Unauthorized",
+		})
+		return
+	}
+	user := currentUser.(*user.User)
+
+	// Parse file ID from URL parameter
+	fileID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid file ID",
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		IsPublic bool `json:"isPublic" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid request",
+		})
+		return
+	}
+
+	// Update file visibility
+	if err := h.fileService.UpdateFileVisibility(c.Request.Context(), fileID, user.UserID, req.IsPublic); err != nil {
+		statusCode := http.StatusBadRequest
+		if err == security.ErrAccessDenied {
+			statusCode = http.StatusForbidden
+		} else if err == security.ErrNotFound {
+			statusCode = http.StatusNotFound
+		}
+		
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "File visibility updated successfully",
+	})
+}
+
+// DownloadFile handles downloading a file
+func (h *Handler) DownloadFile(c *gin.Context) {
+	// Get current user from context
+	currentUser, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "Unauthorized",
+		})
+		return
+	}
+	user := currentUser.(*user.User)
+
+	// Parse file ID from URL parameter
+	fileID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid file ID",
+		})
+		return
+	}
+
+	// Get file
+	file, err := h.fileService.GetFile(c.Request.Context(), fileID, user.UserID)
+	if err != nil {
+		statusCode := http.StatusNotFound
+		if err == security.ErrAccessDenied {
+			statusCode = http.StatusForbidden
+		}
+		
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Get file from storage
+	reader, contentType, err := h.fileService.DownloadFile(c.Request.Context(), fileID, user.UserID)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if err == security.ErrAccessDenied {
+			statusCode = http.StatusForbidden
+		} else if err == security.ErrNotFound {
+			statusCode = http.StatusNotFound
+		}
+		
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+	defer reader.Close()
+
+	// Set headers for file download
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", "attachment; filename="+file.FileName)
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Expires", "0")
+	c.Header("Cache-Control", "must-revalidate")
+	c.Header("Pragma", "public")
+
+	c.DataFromReader(http.StatusOK, file.Size, contentType, reader, nil)
 }

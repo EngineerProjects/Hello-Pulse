@@ -1,6 +1,8 @@
+// cmd/main.go
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -26,11 +28,13 @@ import (
 	projectservice "hello-pulse.fr/internal/services/project"
 	"hello-pulse.fr/pkg/config"
 	"hello-pulse.fr/pkg/database"
+	"hello-pulse.fr/pkg/security"
 	"hello-pulse.fr/pkg/storage"
 )
 
-
 func main() {
+	ctx := context.Background()
+	
 	// Load configuration
 	appConfig := config.LoadConfig()
 	storageConfig := config.LoadStorageConfig()
@@ -50,20 +54,6 @@ func main() {
 		&invite.InviteCode{},
 	)
 
-	// Initialize MinIO client
-	minioClient, err := storage.NewMinioClient(storage.MinioConfig{
-		Endpoint:        storageConfig.Endpoint,
-		AccessKeyID:     storageConfig.AccessKeyID,
-		SecretAccessKey: storageConfig.SecretAccessKey,
-		UseSSL:          storageConfig.UseSSL,
-		BucketName:      "hello-pulse", // Default bucket name
-	})
-	
-	if err != nil {
-		log.Printf("Warning: Failed to initialize MinIO client: %v", err)
-		log.Println("File storage functionality will be unavailable")
-	}
-
 	// Initialize repositories
 	userRepository := userrepo.NewRepository(database.DB)
 	sessionRepository := authrepo.NewRepository(database.DB)
@@ -73,26 +63,54 @@ func main() {
 	summaryRepository := projectrepo.NewSummaryRepository(database.DB)
 	eventRepository := eventrepo.NewRepository(database.DB)
 	fileRepository := filerepo.NewRepository(database.DB)
+	
+	// Initialize security service
+	securityService := security.NewAuthorizationService(
+		fileRepository,
+		projectRepository,
+		orgRepository,
+		userRepository,
+		eventRepository,
+	)
+
+	// Initialize storage provider
+	storageProvider, err := storage.NewProvider(storageConfig)
+	if err != nil {
+		log.Printf("Warning: Failed to create storage provider: %v", err)
+		log.Println("File storage functionality will be unavailable")
+	}
+
+	// Initialize storage provider if it was created successfully
+	var fileService *fileservice.Service
+	if storageProvider != nil {
+		if err := storageProvider.Initialize(ctx); err != nil {
+			log.Printf("Warning: Failed to initialize storage provider: %v", err)
+			log.Println("File storage functionality will be unavailable")
+		} else {
+			// Initialize file service with security service
+			fileService = fileservice.NewService(
+				fileRepository, 
+				storageProvider, 
+				storageConfig.DefaultBucket,
+				securityService,
+			)
+			
+			// Start the file cleanup background task
+			StartFileCleanupTask(fileService)
+		}
+	}
 
 	// Initialize services
 	authService := authservice.NewService(userRepository, sessionRepository)
 	projectService := projectservice.NewService(projectRepository, userRepository, summaryRepository)
 	orgService := orgservice.NewService(orgRepository, userRepository, inviteRepository)
 	eventService := eventservice.NewService(eventRepository, userRepository)
-	
-	// Initialize file service only if MinIO client was successfully created
-	var fileService *fileservice.Service
-	if minioClient != nil {
-		fileService = fileservice.NewService(fileRepository, minioClient, "hello-pulse")
-		// Start the file cleanup background task
-		StartFileCleanupTask(fileService)
-	}
 
 	// Initialize Gin router
 	r := gin.Default()
 	r.MaxMultipartMemory = 100 << 20 // 100 MiB for file uploads
 
-	// Setup routes
+	// Setup routes with security service
 	routes.Setup(
 		r,
 		database.DB,
@@ -101,6 +119,7 @@ func main() {
 		orgService,
 		eventService,
 		fileService,
+		securityService,
 	)
 
 	// Start server
