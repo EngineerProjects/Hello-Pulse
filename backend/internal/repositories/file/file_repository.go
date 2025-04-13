@@ -25,12 +25,12 @@ func (r *Repository) Create(file *file.File) error {
 
 // FindByID finds a file by ID
 func (r *Repository) FindByID(id uuid.UUID) (*file.File, error) {
-	var file file.File
-	err := r.db.First(&file, "id = ?", id).Error
+	var f file.File
+	err := r.db.First(&f, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
-	return &file, nil
+	return &f, nil
 }
 
 // Update updates a file
@@ -38,7 +38,12 @@ func (r *Repository) Update(file *file.File) error {
 	return r.db.Save(file).Error
 }
 
-// Delete marks a file as deleted
+// DeletePermanently permanently deletes a file
+func (r *Repository) DeletePermanently(id uuid.UUID) error {
+	return r.db.Delete(&file.File{}, "id = ?", id).Error
+}
+
+// SoftDelete marks a file as deleted
 func (r *Repository) SoftDelete(id uuid.UUID) error {
 	now := time.Now()
 	return r.db.Model(&file.File{}).Where("id = ?", id).Updates(map[string]interface{}{
@@ -47,9 +52,12 @@ func (r *Repository) SoftDelete(id uuid.UUID) error {
 	}).Error
 }
 
-// PermanentDelete permanently deletes a file
-func (r *Repository) PermanentDelete(id uuid.UUID) error {
-	return r.db.Delete(&file.File{}, "id = ?", id).Error
+// Restore restores a soft-deleted file
+func (r *Repository) Restore(id uuid.UUID) error {
+	return r.db.Model(&file.File{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"is_deleted": false,
+		"deleted_at": nil,
+	}).Error
 }
 
 // FindByOrganization returns files for a specific organization
@@ -82,5 +90,15 @@ func (r *Repository) FindByUploader(uploaderID uuid.UUID, includeDeleted bool) (
 func (r *Repository) FindExpiredDeleted(threshold time.Time) ([]file.File, error) {
 	var files []file.File
 	err := r.db.Where("is_deleted = ? AND deleted_at <= ?", true, threshold).Find(&files).Error
+	return files, err
+}
+
+// GetUserAccessibleFiles returns files that a user can access (owned or public within their org)
+func (r *Repository) GetUserAccessibleFiles(userID, orgID uuid.UUID) ([]file.File, error) {
+	var files []file.File
+	err := r.db.Where(
+		"(organization_id = ? AND is_deleted = ? AND (uploader_id = ? OR is_public = ?))",
+		orgID, false, userID, true).
+		Find(&files).Error
 	return files, err
 }

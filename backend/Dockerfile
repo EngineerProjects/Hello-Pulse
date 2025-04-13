@@ -1,4 +1,4 @@
-FROM golang:1.24
+FROM golang:1.24-slim
 
 WORKDIR /app
 
@@ -13,4 +13,4 @@ COPY . .
 EXPOSE 8000
 
 # Build and run the application
-CMD ["sh", "-c", "go build -o backend ./cmd/api/main.go && ./backend"]
+CMD ["sh", "-c", "go build -o backend ./cmd/main.go && ./backend"]

@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	
@@ -35,7 +37,6 @@ func Setup(
 	projectHandler := project.NewHandler(projectService)
 	orgHandler := organization.NewHandler(orgService)
 	eventHandler := event.NewHandler(eventService)
-	fileHandler := file.NewHandler(fileService)
 
 	// Create summary repository, service and handler
 	summaryRepo := projectrepo.NewSummaryRepository(db)
@@ -85,13 +86,22 @@ func Setup(
 		authorized.GET("/events/:id/participants", eventHandler.GetEventParticipants)
 		authorized.GET("/events/fetch-users", eventHandler.GetOrganizationUsers)
 		
-		// File routes
-		authorized.POST("/files", fileHandler.UploadFile)
-		authorized.GET("/files", fileHandler.GetUserFiles)
-		authorized.GET("/files/organization", fileHandler.GetOrganizationFiles)
-		authorized.DELETE("/files/:id", fileHandler.SoftDeleteFile)
-		authorized.POST("/files/:id/restore", fileHandler.RestoreFile)
-		authorized.GET("/files/types", fileHandler.GetFileTypes)
-		authorized.GET("/files/:id", fileHandler.GetFileByID)
+		// File routes - but only if the file service is available
+		if fileService != nil {
+			fileHandler := file.NewHandler(fileService)
+			
+			authorized.POST("/files", fileHandler.UploadFile)
+			authorized.GET("/files", fileHandler.GetUserFiles)
+			authorized.GET("/files/organization", fileHandler.GetOrganizationFiles)
+			authorized.GET("/files/types", fileHandler.GetFileTypes)
+			authorized.GET("/files/:id", fileHandler.GetFileByID)
+			authorized.GET("/files/:id/url", fileHandler.GetFileURL)
+			authorized.DELETE("/files/:id", fileHandler.SoftDeleteFile)
+			authorized.POST("/files/:id/restore", fileHandler.RestoreFile)
+			authorized.POST("/files/batch-delete", fileHandler.BatchDeleteFiles)
+			authorized.POST("/files/cleanup", fileHandler.RunCleanup)
+		} else {
+			log.Println("File routes not configured: file service is unavailable")
+		}
 	}
 }

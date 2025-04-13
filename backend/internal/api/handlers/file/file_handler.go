@@ -1,9 +1,10 @@
 package file
 
 import (
-	"fmt"
 	"net/http"
-	
+	"strconv"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"hello-pulse.fr/internal/models/user"
@@ -57,24 +58,19 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Generate a unique object name
-	objectName := fmt.Sprintf("%s/%s", user.OrganizationID.String(), uuid.New().String())
-	
-	// Determine bucket name based on file extension
-	bucketName := "hello-pulse"
-	
-	// Get content type from file
-	contentType := file.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	// Check file size - 100 MB limit
+	if file.Size > 100*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "File size exceeds the 100 MB limit",
+		})
+		return
 	}
-	
-	// Upload file record to database
-	fileRecord, err := h.fileService.UploadFile(
-		file.Filename,
-		bucketName,
-		objectName,
-		contentType,
+
+	// Upload file
+	uploadedFile, err := h.fileService.UploadFile(
+		c.Request.Context(),
+		file,
 		user.UserID,
 		*user.OrganizationID,
 		isPublic,
@@ -82,22 +78,21 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error":   "Failed to save file metadata",
+			"error":   "Failed to upload file: " + err.Error(),
 		})
 		return
 	}
 
-	// In a real implementation, you would upload the file to storage here
-	// For now, we'll just return the file metadata
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "File uploaded successfully",
 		"file": gin.H{
-			"id":          fileRecord.ID,
-			"fileName":    fileRecord.FileName,
-			"contentType": fileRecord.ContentType,
-			"uploadedAt":  fileRecord.UploadedAt,
-			"isPublic":    fileRecord.IsPublic,
+			"id":          uploadedFile.ID,
+			"fileName":    uploadedFile.FileName,
+			"contentType": uploadedFile.ContentType,
+			"size":        uploadedFile.Size,
+			"uploadedAt":  uploadedFile.UploadedAt,
+			"isPublic":    uploadedFile.IsPublic,
 		},
 	})
 }
@@ -135,6 +130,7 @@ func (h *Handler) GetUserFiles(c *gin.Context) {
 			"id":          file.ID,
 			"fileName":    file.FileName,
 			"contentType": file.ContentType,
+			"size":        file.Size,
 			"uploadedAt":  file.UploadedAt,
 			"isPublic":    file.IsPublic,
 			"isDeleted":   file.IsDeleted,
@@ -189,6 +185,7 @@ func (h *Handler) GetOrganizationFiles(c *gin.Context) {
 			"id":          file.ID,
 			"fileName":    file.FileName,
 			"contentType": file.ContentType,
+			"size":        file.Size,
 			"uploadedAt":  file.UploadedAt,
 			"isPublic":    file.IsPublic,
 			"isDeleted":   file.IsDeleted,
@@ -199,6 +196,45 @@ func (h *Handler) GetOrganizationFiles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"files":   formattedFiles,
+	})
+}
+
+// GetFileURL handles generating a presigned URL for a file
+func (h *Handler) GetFileURL(c *gin.Context) {
+	// Get current user from context
+	currentUser, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "Unauthorized",
+		})
+		return
+	}
+	user := currentUser.(*user.User)
+
+	// Parse file ID from URL parameter
+	fileID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid file ID",
+		})
+		return
+	}
+
+	// Get file URL
+	url, err := h.fileService.GetFileURL(c.Request.Context(), fileID, user.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"url":     url,
 	})
 }
 
@@ -215,7 +251,7 @@ func (h *Handler) SoftDeleteFile(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Get file ID from URL parameter
+	// Parse file ID from URL parameter
 	fileID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -225,8 +261,8 @@ func (h *Handler) SoftDeleteFile(c *gin.Context) {
 		return
 	}
 
-	// Soft delete file
-	if err := h.fileService.SoftDeleteFile(fileID, user.UserID); err != nil {
+	// Soft delete the file
+	if err := h.fileService.SoftDeleteFile(c.Request.Context(), fileID, user.UserID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"error":   err.Error(),
@@ -253,7 +289,7 @@ func (h *Handler) RestoreFile(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Get file ID from URL parameter
+	// Parse file ID from URL parameter
 	fileID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -263,8 +299,8 @@ func (h *Handler) RestoreFile(c *gin.Context) {
 		return
 	}
 
-	// Restore file
-	if err := h.fileService.RestoreFile(fileID, user.UserID); err != nil {
+	// Restore the file
+	if err := h.fileService.RestoreFile(c.Request.Context(), fileID, user.UserID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"error":   err.Error(),
@@ -280,16 +316,7 @@ func (h *Handler) RestoreFile(c *gin.Context) {
 
 // GetFileTypes returns a list of supported file types and their extensions
 func (h *Handler) GetFileTypes(c *gin.Context) {
-	// Define supported file types
-	fileTypes := map[string][]string{
-		"documents": {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".md"},
-		"images":    {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg"},
-		"audio":     {".mp3", ".wav", ".ogg", ".flac", ".m4a"},
-		"video":     {".mp4", ".mov", ".avi", ".mkv", ".webm"},
-		"archives":  {".zip", ".rar", ".7z", ".tar", ".gz"},
-		"spreadsheets": {".xls", ".xlsx", ".csv", ".ods"},
-		"presentations": {".ppt", ".pptx", ".odp"},
-	}
+	fileTypes := h.fileService.GetSupportedFileTypes()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":   true,
@@ -297,7 +324,7 @@ func (h *Handler) GetFileTypes(c *gin.Context) {
 	})
 }
 
-// GetFileByID retrieves a file by ID
+// GetFileByID retrieves file details by ID
 func (h *Handler) GetFileByID(c *gin.Context) {
 	// Get current user from context
 	currentUser, exists := c.Get("user")
@@ -310,7 +337,7 @@ func (h *Handler) GetFileByID(c *gin.Context) {
 	}
 	user := currentUser.(*user.User)
 
-	// Get file ID from URL parameter
+	// Parse file ID from URL parameter
 	fileID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -331,27 +358,127 @@ func (h *Handler) GetFileByID(c *gin.Context) {
 	}
 
 	// Check if user has access to the file
-	if file.OrganizationID != *user.OrganizationID && !file.IsPublic && file.UploaderID != user.UserID {
+	if file.UploaderID != user.UserID && !file.IsPublic && (user.OrganizationID == nil || file.OrganizationID != *user.OrganizationID) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"error":   "You don't have permission to access this file",
+			"error":   "Access denied",
 		})
 		return
 	}
 
-	// Format response
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"file": gin.H{
 			"id":          file.ID,
 			"fileName":    file.FileName,
 			"contentType": file.ContentType,
+			"size":        file.Size,
 			"uploadedAt":  file.UploadedAt,
 			"isPublic":    file.IsPublic,
 			"isDeleted":   file.IsDeleted,
 			"uploaderId":  file.UploaderID,
-			"bucketName":  file.BucketName,
-			"objectName":  file.ObjectName,
 		},
+	})
+}
+
+// BatchDeleteFiles handles batch deletion of files
+func (h *Handler) BatchDeleteFiles(c *gin.Context) {
+	// Get current user from context
+	currentUser, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "Unauthorized",
+		})
+		return
+	}
+	user := currentUser.(*user.User)
+
+	// Parse request body
+	var req struct {
+		FileIDs []string `json:"fileIds" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid request",
+		})
+		return
+	}
+
+	// Process each file
+	var failed []string
+	for _, idStr := range req.FileIDs {
+		fileID, err := uuid.Parse(idStr)
+		if err != nil {
+			failed = append(failed, idStr)
+			continue
+		}
+
+		if err := h.fileService.SoftDeleteFile(c.Request.Context(), fileID, user.UserID); err != nil {
+			failed = append(failed, idStr)
+		}
+	}
+
+	if len(failed) > 0 {
+		c.JSON(http.StatusPartialContent, gin.H{
+			"success":     false,
+			"message":     "Some files could not be deleted",
+			"failedFiles": failed,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "All files deleted successfully",
+	})
+}
+
+// RunCleanup handles manual cleanup of expired deleted files
+func (h *Handler) RunCleanup(c *gin.Context) {
+	// This endpoint should be admin-only
+	currentUser, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"error":   "Unauthorized",
+		})
+		return
+	}
+	user := currentUser.(*user.User)
+
+	// Check if user is an admin
+	if user.Role != "Admin" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   "Only administrators can run cleanup",
+		})
+		return
+	}
+
+	// Parse days parameter with default of 30 days
+	daysStr := c.DefaultQuery("days", "30")
+	days, err := strconv.Atoi(daysStr)
+	if err != nil || days <= 0 {
+		days = 30
+	}
+
+	// Calculate threshold date
+	threshold := time.Now().AddDate(0, 0, -days)
+
+	// Run cleanup
+	if err := h.fileService.CleanupExpiredFiles(c.Request.Context(), threshold); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Cleanup failed: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Cleanup completed successfully",
 	})
 }

@@ -7,7 +7,7 @@ import (
 	"hello-pulse.fr/internal/api/routes"
 	"hello-pulse.fr/internal/models/auth"
 	"hello-pulse.fr/internal/models/event"
-	"hello-pulse.fr/internal/models/file"
+	fileModel "hello-pulse.fr/internal/models/file"
 	"hello-pulse.fr/internal/models/invite"
 	"hello-pulse.fr/internal/models/organization"
 	"hello-pulse.fr/internal/models/project"
@@ -26,11 +26,14 @@ import (
 	projectservice "hello-pulse.fr/internal/services/project"
 	"hello-pulse.fr/pkg/config"
 	"hello-pulse.fr/pkg/database"
+	"hello-pulse.fr/pkg/storage"
 )
+
 
 func main() {
 	// Load configuration
 	appConfig := config.LoadConfig()
+	storageConfig := config.LoadStorageConfig()
 
 	// Connect to database
 	database.Connect()
@@ -40,12 +43,26 @@ func main() {
 		&user.User{},
 		&organization.Organization{},
 		&project.Project{},
-		&project.Summary{}, // Add this line for project summaries
+		&project.Summary{},
 		&auth.Session{},
 		&event.Event{},
-		&file.File{},
+		&fileModel.File{},
 		&invite.InviteCode{},
 	)
+
+	// Initialize MinIO client
+	minioClient, err := storage.NewMinioClient(storage.MinioConfig{
+		Endpoint:        storageConfig.Endpoint,
+		AccessKeyID:     storageConfig.AccessKeyID,
+		SecretAccessKey: storageConfig.SecretAccessKey,
+		UseSSL:          storageConfig.UseSSL,
+		BucketName:      "hello-pulse", // Default bucket name
+	})
+	
+	if err != nil {
+		log.Printf("Warning: Failed to initialize MinIO client: %v", err)
+		log.Println("File storage functionality will be unavailable")
+	}
 
 	// Initialize repositories
 	userRepository := userrepo.NewRepository(database.DB)
@@ -53,20 +70,27 @@ func main() {
 	orgRepository := orgrepo.NewRepository(database.DB)
 	inviteRepository := inviterepo.NewRepository(database.DB)
 	projectRepository := projectrepo.NewRepository(database.DB)
-	summaryRepository := projectrepo.NewSummaryRepository(database.DB) // Initialize summary repository
+	summaryRepository := projectrepo.NewSummaryRepository(database.DB)
 	eventRepository := eventrepo.NewRepository(database.DB)
 	fileRepository := filerepo.NewRepository(database.DB)
 
 	// Initialize services
 	authService := authservice.NewService(userRepository, sessionRepository)
-	projectService := projectservice.NewService(projectRepository, userRepository, summaryRepository) // Pass summary repository
+	projectService := projectservice.NewService(projectRepository, userRepository, summaryRepository)
 	orgService := orgservice.NewService(orgRepository, userRepository, inviteRepository)
 	eventService := eventservice.NewService(eventRepository, userRepository)
-	fileService := fileservice.NewService(fileRepository)
+	
+	// Initialize file service only if MinIO client was successfully created
+	var fileService *fileservice.Service
+	if minioClient != nil {
+		fileService = fileservice.NewService(fileRepository, minioClient, "hello-pulse")
+		// Start the file cleanup background task
+		StartFileCleanupTask(fileService)
+	}
 
 	// Initialize Gin router
 	r := gin.Default()
-	r.MaxMultipartMemory = 30 << 30 // 30 GiB
+	r.MaxMultipartMemory = 100 << 20 // 100 MiB for file uploads
 
 	// Setup routes
 	routes.Setup(

@@ -13,7 +13,8 @@ type File struct {
 	FileName       string     `gorm:"type:varchar(255);not null" json:"fileName"`
 	BucketName     string     `gorm:"type:varchar(255);not null" json:"bucketName"`
 	ObjectName     string     `gorm:"type:varchar(255);not null" json:"objectName"`
-	ContentType    string     `gorm:"type:varchar(50)" json:"contentType"`
+	ContentType    string     `gorm:"type:varchar(100)" json:"contentType"`
+	Size           int64      `gorm:"not null" json:"size"`
 	UploadedAt     time.Time  `gorm:"autoCreateTime" json:"uploadedAt"`
 	IsDeleted      bool       `gorm:"default:false" json:"isDeleted"`
 	DeletedAt      *time.Time `json:"deletedAt,omitempty"`
@@ -33,4 +34,15 @@ func (f *File) BeforeCreate(tx *gorm.DB) error {
 // TableName specifies the table name for the File model
 func (File) TableName() string {
 	return "files"
+}
+
+// GetSupportedFileTypes returns a map of supported file types
+func GetSupportedFileTypes() map[string][]string {
+	return map[string][]string{
+		"documents": {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".md", ".csv", ".xls", ".xlsx"},
+		"images":    {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"},
+		"audio":     {".mp3", ".wav", ".ogg", ".flac", ".m4a"},
+		"video":     {".mp4", ".mov", ".avi", ".mkv", ".webm"},
+		"archives":  {".zip", ".rar", ".7z", ".tar", ".gz"},
+	}
 }
